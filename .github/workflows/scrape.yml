@@ -1,0 +1,119 @@
+name: Scrape and deploy
+
+on:
+  schedule:
+    - cron: "17 9 * * *"        # daily, 09:17 UTC (4:17 AM Central)
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Boards per shard (0 = all). Use 50 for a quick test run."
+        default: "0"
+  push:
+    branches: [main]
+    paths: ["web/**", "scraper/build_db.py"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+env:
+  SHARDS: 16
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt pytest
+      - run: pytest -q tests
+
+  scrape:
+    needs: test
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - name: Fetch boards
+        run: >
+          python -m scraper.run --shard ${{ matrix.shard }} --of $SHARDS --out out
+          --limit ${{ github.event.inputs.limit || 0 }} --max-minutes 300
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard }}
+          path: out/
+          retention-days: 3
+
+  build:
+    needs: [test, scrape]
+    # build even if some shards failed, so one bad shard doesn't block the update
+    if: always() && needs.test.result == 'success' && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: pip install -r requirements.txt && npm ci
+      - uses: actions/download-artifact@v4
+        with: { pattern: shard-*, path: out, merge-multiple: true }
+      - name: Restore first-seen dates from the live site
+        run: |
+          mkdir -p state
+          curl -fsSL "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/state/first_seen.tsv.gz" \
+            -o state/first_seen.tsv.gz || echo "no previous state (first run)"
+      - name: Build site
+        run: |
+          node scripts/vendor.mjs site
+          python -m scraper.build_db --in out --site site --state state
+          mkdir -p site/state && cp state/first_seen.tsv.gz site/state/
+          du -sh site
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # web-only changes: redeploy the UI without re-scraping, reusing the live DB
+  redeploy-ui:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci && node scripts/vendor.mjs site
+      - name: Copy current DB from the live site
+        run: |
+          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          if ! curl -fsSL "$base/meta.json" -o site/meta.json; then echo "No live site yet — run the scrape workflow first."; exit 1; fi
+          mkdir -p site/db site/state
+          curl -fsSL "$base/db/config.json" -o site/db/config.json
+          n=$(python3 -c "import json,math;c=json.load(open('site/db/config.json'));print(math.ceil(c['databaseLengthBytes']/c['serverChunkSize']))")
+          for i in $(seq 0 $((n-1))); do f=$(printf "db.sqlite3.%03d" $i); curl -fsSL "$base/db/$f" -o "site/db/$f"; done
+          curl -fsSL "$base/state/first_seen.tsv.gz" -o site/state/first_seen.tsv.gz || true
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: deploy
+        uses: actions/deploy-pages@v4

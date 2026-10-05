@@ -1,0 +1,11 @@
+{
+  "name": "job-radar",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "dependencies": {
+    "sql.js-httpvfs": "0.8.12"
+  }
+}

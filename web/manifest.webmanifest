@@ -1,0 +1,2 @@
+{"name":"Job Radar","short_name":"Job Radar","start_url":"./","display":"standalone","background_color":"#0f1420","theme_color":"#e5533d",
+ "icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

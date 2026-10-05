@@ -1,0 +1,8 @@
+node_modules/
+out/
+state/
+site/
+screenshots/
+__pycache__/
+.pytest_cache/
+*.pyc
