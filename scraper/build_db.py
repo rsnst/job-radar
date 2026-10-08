@@ -1,4 +1,5 @@
-"""Merge shard outputs into a chunked SQLite DB the web app reads with HTTP range requests.
+"""Merge shard outputs with last run's state into a chunked SQLite DB the web app
+reads with HTTP range requests, and write the state for the next run.
 
     python -m scraper.build_db --in out/ --site site/ --state state/
 """
@@ -14,8 +15,10 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .run import BOARDS, load_boards
+from .state import day, load_boards_state, load_jobs_state, save_boards_state, save_jobs_state
 
-EPOCH = date(1970, 1, 1)
+STALE_DAYS = 3  # keep a board's last jobs this long if it errors or isn't reached
+
 CHUNK = 25 * 1024 * 1024
 PAGE = 4096
 
@@ -49,84 +52,143 @@ INSERT INTO boards_fts(boards_fts) VALUES('optimize');
 """
 
 
-def day(s: str | None) -> int | None:
+def day_of(s: str | None) -> int | None:
     if not s:
         return None
     try:
-        return (date.fromisoformat(s[:10]) - EPOCH).days
+        return day(date.fromisoformat(s[:10]))
     except ValueError:
         return None
 
 
-def load_first_seen(path: Path) -> dict[str, int]:
-    if not path.exists():
-        return {}
-    with gzip.open(path, "rt") as f:
-        return {k: int(v) for k, v in (line.rstrip("\n").split("\t") for line in f if "\t" in line)}
+def _compact(j: dict, f: int) -> dict:
+    """Shard-format job -> state-format job (board fields dropped, first-seen day added)."""
+    return {"k": j["k"], "t": j["t"], "l": j["l"], "s": j["s"], "r": j["r"], "u": j["u"],
+            "d": j["d"], "url": j["url"], "f": f}
 
 
-def save_first_seen(path: Path, fs: dict[str, int]):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(path, "wt") as f:
-        for k, v in fs.items():
-            f.write(f"{k}\t{v}\n")
+def merge(in_dir: Path, state_dir: Path, today: date, boards_path: Path = BOARDS):
+    """Combine this run's shard output with last run's state.
 
+    Returns (boards, jobs_by_url, new_board_state, run_info), where each board dict
+    gains "status" and jobs are in state format.
+    """
+    td = day(today)
+    prev_b = load_boards_state(state_dir)
+    prev_j = load_jobs_state(state_dir)
+    first = {j["k"]: j["f"] for jobs in prev_j.values() for j in jobs}
 
-def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, boards_path: Path = BOARDS):
-    today = today or datetime.now(timezone.utc).date()
-    td = (today - EPOCH).days
-    fs_path = state_dir / "first_seen.tsv.gz"
-    first_seen = load_first_seen(fs_path)
-
-    # board run status
-    status: dict[int, dict] = {}
+    stats: dict[int, dict] = {}
     for p in sorted(glob.glob(str(in_dir / "boards-*.jsonl"))):
         for line in open(p):
-            s = json.loads(line)
-            status[s["b"]] = s
-
-    # jobs, deduped by key
-    jobs: dict[str, dict] = {}
+            st = json.loads(line)
+            stats[st["b"]] = st
+    fresh: dict[int, list] = defaultdict(list)
     for p in sorted(glob.glob(str(in_dir / "jobs-*.jsonl.gz"))):
         with gzip.open(p, "rt") as f:
             for line in f:
                 j = json.loads(line)
-                jobs.setdefault(j["k"], j)
+                fresh[j["b"]].append(j)
+    summaries = [json.loads(Path(p).read_text()) for p in sorted(glob.glob(str(in_dir / "summary-*.json")))]
 
-    new_fs = {}
+    boards, jobs_by_url, new_state = [], {}, {}
+    outcome = Counter()
+    for b in load_boards(boards_path):
+        url = b["board_url"]
+        s = stats.get(b["id"])
+        ps = prev_b.get(url)
+        pj = prev_j.get(url, [])
+        st = s["st"] if s else "not_run"
+        recent_ok = bool(ps and td - ps.get("ok", -10**6) <= STALE_DAYS)
+        if st == "ok":
+            new = []
+            seen = set()
+            for j in fresh.get(b["id"], []):
+                if j["k"] not in seen:
+                    seen.add(j["k"])
+                    new.append(_compact(j, first.get(j["k"], td)))
+            ns = {"st": "ok", "n": s.get("n", 0), "ok": td, "full": td}
+            if "top" in s:
+                ns.update(total=s.get("total"), top=s["top"])
+            if s.get("partial"):  # only page 1 fetched: keep the rest from last run
+                new += [j for j in pj if j["k"] not in seen]
+                ns["full"] = (ps or {}).get("full", td)
+                outcome["page1_unchanged"] += 1
+            else:
+                outcome["fetched"] += 1
+            jobs, status = new, "ok"
+        elif st == "unsupported":
+            jobs, status, ns = [], "unsupported", {"st": "unsupported", "err": s.get("err")}
+            outcome["unsupported"] += 1
+        elif st == "skip" and ps:
+            jobs, status, ns = pj, ps.get("st", "ok"), ps
+            outcome["skipped_empty"] += 1
+        elif st == "error":
+            jobs = pj if recent_ok else []
+            status, ns = "error", {**(ps or {}), "st": "error", "err": s.get("err")}
+            outcome["error_kept_last" if jobs else "error"] += 1
+        elif ps:  # timeout, or its shard didn't finish: keep last run's result for a while
+            jobs = pj if recent_ok else []
+            status, ns = ps.get("st", "not_run"), ps
+            outcome["not_reached_kept_last" if jobs else "not_reached"] += 1
+        else:
+            jobs, status, ns = [], "not_run", None
+            outcome["not_reached"] += 1
+        if ns is not None:
+            new_state[url] = ns
+        if jobs:
+            jobs_by_url[url] = jobs
+        boards.append({**b, "status": status})
+
+    run = {
+        "mode": "full" if not summaries or any(x.get("mode") == "full" for x in summaries) else "incremental",
+        "requests": sum(x.get("requests", 0) for x in summaries),
+        "throttled": sum(x.get("throttled", 0) for x in summaries),
+        "fetch_seconds": max((x.get("seconds", 0) for x in summaries), default=0),
+        "shards": len(summaries),
+        "outcome": dict(outcome),
+    }
+    return boards, jobs_by_url, new_state, run
+
+
+def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, boards_path: Path = BOARDS):
+    today = today or datetime.now(timezone.utc).date()
+    td = day(today)
+    boards, jobs_by_url, new_state, run = merge(in_dir, state_dir, today, boards_path)
+
     rows = []
     per_board = Counter()
-    for k, j in jobs.items():
-        seen = first_seen.get(k, td)
-        new_fs[k] = seen
-        posted = day(j.get("d"))
-        if posted is None or posted > td:
-            posted = seen
-        per_board[j["b"]] += 1
-        rows.append((j["b"], j["c"], j["a"], j["t"], j["l"], j["s"], j["r"], j["u"], posted, seen, j["url"]))
+    for b in boards:
+        for j in jobs_by_url.get(b["board_url"], []):
+            posted = day_of(j.get("d"))
+            if posted is None or posted > td:
+                posted = j["f"]
+            per_board[b["id"]] += 1
+            rows.append((b["id"], b["company"], b["ats"], j["t"], j["l"], j["s"], j["r"], j["u"],
+                         posted, j["f"], j["url"]))
     rows.sort(key=lambda r: (-r[8], -r[9], r[1]))
+
+    by_ats = defaultdict(lambda: {"boards": 0, "ok": 0, "error": 0, "unsupported": 0, "jobs": 0})
+    board_rows = []
+    for b in boards:
+        n = per_board.get(b["id"], 0)
+        a = by_ats[b["ats"]]
+        a["boards"] += 1
+        a["ok"] += b["status"] == "ok"
+        a["error"] += b["status"] == "error"
+        a["unsupported"] += b["status"] == "unsupported"
+        a["jobs"] += n
+        board_rows.append((b["id"], b["company"], b["ats"], b["board_url"], b.get("us_evidence", ""), b["status"], n))
 
     site_db = site / "db"
     site_db.mkdir(parents=True, exist_ok=True)
     state_dir.mkdir(parents=True, exist_ok=True)
-    tmp = state_dir / "jobs.sqlite3"
+    tmp = site / "db.sqlite3.build"
     if tmp.exists():
         tmp.unlink()
     con = sqlite3.connect(tmp)
     con.executescript(SCHEMA)
 
-    by_ats = defaultdict(lambda: {"boards": 0, "ok": 0, "unsupported": 0, "jobs": 0})
-    board_rows = []
-    for b in load_boards(boards_path):
-        s = status.get(b["id"])
-        st = "not_run" if s is None else ("ok" if s.get("ok") else ("unsupported" if s.get("skip") else "error"))
-        n = per_board.get(b["id"], 0)
-        a = by_ats[b["ats"]]
-        a["boards"] += 1
-        a["ok"] += st == "ok"
-        a["unsupported"] += st == "unsupported"
-        a["jobs"] += n
-        board_rows.append((b["id"], b["company"], b["ats"], b["board_url"], b["us_evidence"], st, n))
     con.executemany("INSERT INTO boards VALUES (?,?,?,?,?,?,?)", board_rows)
     con.executemany("INSERT INTO jobs(board,company,ats,title,loc,state,remote,us,posted,seen,url) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
@@ -175,9 +237,11 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
         "by_ats": dict(sorted(by_ats.items(), key=lambda kv: -kv[1]["jobs"])),
         "states": [s for s, _ in states.most_common()],
         "cutoffs": cutoffs,
+        "run": run,
     }
     (site / "meta.json").write_text(json.dumps(meta, indent=1))
-    save_first_seen(fs_path, new_fs)
+    save_boards_state(state_dir, new_state)
+    save_jobs_state(state_dir, jobs_by_url)
     tmp.unlink()
     return meta
 
@@ -187,8 +251,9 @@ def main(argv=None):
     p.add_argument("--in", dest="inp", default="out")
     p.add_argument("--site", default="site")
     p.add_argument("--state", default="state")
+    p.add_argument("--today", default="", help=argparse.SUPPRESS)
     a = p.parse_args(argv)
-    meta = build(Path(a.inp), Path(a.site), Path(a.state))
+    meta = build(Path(a.inp), Path(a.site), Path(a.state), date.fromisoformat(a.today) if a.today else None)
     print(json.dumps({k: v for k, v in meta.items() if k not in ("by_ats", "states")}, indent=1))
 
 

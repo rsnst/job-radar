@@ -1,28 +1,35 @@
 name: Scrape and deploy
 
+# Daily incremental refresh (~12 min end to end), full sweep on Sundays.
+# State (each board's last result + every job's first-seen date) lives in the Actions cache.
+
 on:
   schedule:
-    - cron: "17 9 * * *"        # daily, 09:17 UTC (4:17 AM Central)
+    - cron: "17 9 * * *"        # daily 09:17 UTC (4:17 AM Central); Sundays run a full sweep
   workflow_dispatch:
     inputs:
+      mode:
+        description: "auto (incremental, full on Sundays or when there's no state) | full | incremental"
+        default: auto
       limit:
-        description: "Boards per shard (0 = all). Use 50 for a quick test run."
+        description: "Boards per shard (0 = all). 40 gives a quick ~800-board trial."
         default: "0"
   push:
     branches: [main]
-    paths: ["web/**", "scraper/build_db.py"]
+    paths: ["web/**"]
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write      # save/restore the state cache
 
 concurrency:
   group: scrape
   cancel-in-progress: false
 
 env:
-  SHARDS: 16
+  SHARDS: 20
 
 jobs:
   test:
@@ -32,26 +39,61 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
       - run: pip install -r requirements.txt pytest
-      - run: pytest -q tests
+      - run: pytest -q tests --ignore=tests/e2e.py
 
-  scrape:
-    needs: test
+  plan:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    outputs:
+      mode: ${{ steps.m.outputs.mode }}
+      minutes: ${{ steps.m.outputs.minutes }}
+    steps:
+      - id: st
+        uses: actions/cache/restore@v4
+        with:
+          path: state/boards.json.gz
+          key: boards-state-${{ github.run_id }}
+          restore-keys: boards-state-
+          lookup-only: true
+      - id: m
+        run: |
+          mode="${{ github.event.inputs.mode || 'auto' }}"
+          if [ "$mode" = auto ]; then
+            if [ -z "${{ steps.st.outputs.cache-matched-key }}" ]; then mode=full
+            elif [ "$(date -u +%u)" = 7 ]; then mode=full
+            else mode=incremental; fi
+          fi
+          # incremental: stop starting requests after 12 min (typical: ~6); boards not reached keep yesterday's jobs
+          if [ "$mode" = full ]; then minutes=120; else minutes=12; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
+          echo "### Mode: $mode" >> "$GITHUB_STEP_SUMMARY"
+
+  scrape:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
       - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: state/boards.json.gz
+          key: boards-state-${{ github.run_id }}
+          restore-keys: boards-state-
       - name: Fetch boards
         run: >
-          python -m scraper.run --shard ${{ matrix.shard }} --of $SHARDS --out out
-          --limit ${{ github.event.inputs.limit || 0 }} --max-minutes 300
+          python -m scraper.run --shard ${{ matrix.shard }} --of $SHARDS
+          --mode ${{ needs.plan.outputs.mode }} --state state --out out
+          --limit ${{ github.event.inputs.limit || 0 }}
+          --max-minutes ${{ needs.plan.outputs.minutes }}
+          --rps 2 --per-host 4
       - uses: actions/upload-artifact@v4
         with:
           name: shard-${{ matrix.shard }}
@@ -59,9 +101,9 @@ jobs:
           retention-days: 3
 
   build:
-    needs: [test, scrape]
-    # build even if some shards failed, so one bad shard doesn't block the update
-    if: always() && needs.test.result == 'success' && github.event_name != 'push'
+    needs: [test, plan, scrape]
+    # build even if some shards failed: their boards keep the previous run's jobs
+    if: always() && needs.test.result == 'success' && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -71,21 +113,44 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm }
       - run: pip install -r requirements.txt && npm ci
       - uses: actions/download-artifact@v4
         with: { pattern: shard-*, path: out, merge-multiple: true }
-      - name: Restore first-seen dates from the live site
-        run: |
-          mkdir -p state
-          curl -fsSL "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/state/first_seen.tsv.gz" \
-            -o state/first_seen.tsv.gz || echo "no previous state (first run)"
+      - uses: actions/cache/restore@v4
+        with:
+          path: state/boards.json.gz
+          key: boards-state-${{ github.run_id }}
+          restore-keys: boards-state-
+      - uses: actions/cache/restore@v4
+        with:
+          path: state/jobs.jsonl.gz
+          key: jobs-state-${{ github.run_id }}
+          restore-keys: jobs-state-
       - name: Build site
         run: |
           node scripts/vendor.mjs site
-          python -m scraper.build_db --in out --site site --state state
-          mkdir -p site/state && cp state/first_seen.tsv.gz site/state/
-          du -sh site
+          python -m scraper.build_db --in out --site site --state state | tee build.json
+          du -sh site state
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, glob
+          m = json.load(open("site/meta.json")); r = m["run"]
+          print(f"**{r['mode']}** · {m['jobs']:,} jobs · {r['requests']:,} requests · "
+                f"slowest shard {r['fetch_seconds'] / 60:.1f} min · {r['throttled']:,} rate-limited\n")
+          print("| outcome | boards |\n|---|---|")
+          for k, v in sorted(r["outcome"].items(), key=lambda kv: -kv[1]): print(f"| {k} | {v:,} |")
+          print("\n| ATS | boards | ok | failed | not indexed | jobs |\n|---|---|---|---|---|---|")
+          for a, v in m["by_ats"].items():
+              print(f"| {a} | {v['boards']:,} | {v['ok']:,} | {v['error']:,} | {v['unsupported']:,} | {v['jobs']:,} |")
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: state/boards.json.gz
+          key: boards-state-${{ github.run_id }}
+      - uses: actions/cache/save@v4
+        with:
+          path: state/jobs.jsonl.gz
+          key: jobs-state-${{ github.run_id }}
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
       - id: deploy
@@ -102,17 +167,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm }
       - run: npm ci && node scripts/vendor.mjs site
       - name: Copy current DB from the live site
         run: |
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-          if ! curl -fsSL "$base/meta.json" -o site/meta.json; then echo "No live site yet — run the scrape workflow first."; exit 1; fi
-          mkdir -p site/db site/state
+          if ! curl -fsSL "$base/meta.json" -o site/meta.json; then echo "No live site yet; run the scrape workflow first."; exit 1; fi
+          mkdir -p site/db
           curl -fsSL "$base/db/config.json" -o site/db/config.json
           n=$(python3 -c "import json,math;c=json.load(open('site/db/config.json'));print(math.ceil(c['databaseLengthBytes']/c['serverChunkSize']))")
           for i in $(seq 0 $((n-1))); do f=$(printf "db.sqlite3.%03d" $i); curl -fsSL "$base/db/$f" -o "site/db/$f"; done
-          curl -fsSL "$base/state/first_seen.tsv.gz" -o site/state/first_seen.tsv.gz || true
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
       - id: deploy

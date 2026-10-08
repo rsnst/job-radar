@@ -26,5 +26,5 @@ for i in range(N):
     w.write(json.dumps({"k":f"x:{i}","b":b["id"],"t":random.choice(lvl)+random.choice(titles),"c":b["company"],"a":b["ats"],
         "l":l,"s":st,"r":rem,"u":int(l!="Remote"),"d":d,"url":b["board_url"]+f"/jobs/{i}"},separators=(",",":"))+"\n")
 for b in boards:
-    s.write(json.dumps({"b":b["id"],"ok":1 if b["id"] in per else (0 if b["ats"] not in ("Dayforce",) else 0),"n":per.get(b["id"],0)})+"\n")
+    s.write(json.dumps({"b":b["id"],"st":"ok","n":per.get(b["id"],0),"us":per.get(b["id"],0)})+"\n")
 w.close(); s.close(); print("wrote", N)

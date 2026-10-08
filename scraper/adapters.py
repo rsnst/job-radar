@@ -20,6 +20,43 @@ class Unsupported(Exception):
     pass
 
 
+class Jobs(list):
+    """A board's jobs plus what the incremental runner needs.
+
+    total:    the ATS's own job count, if it reports one
+    top:      keys on the first page (compared next run to detect change)
+    complete: False when only page 1 was fetched because nothing changed;
+              the build step then carries the rest forward from last run
+    """
+
+    def __init__(self, items=(), total=None, top=None, complete=True):
+        super().__init__(items)
+        self.total, self.top, self.complete = total, top or [], complete
+
+
+async def paginate(pages, prev: dict | None = None) -> Jobs:
+    """Drain an async generator of (jobs, total) pages.
+
+    With `prev` ({"total", "top"} from the last run), stop after page 1 when it
+    has exactly the same keys and the total is unchanged: the board is the same.
+    """
+    out, seen, total, top = [], set(), None, None
+    try:
+        async for jobs, t in pages:
+            if top is None:
+                total, top = t, [j["key"] for j in jobs]
+                if (prev and jobs and prev.get("top") and set(top) == set(prev["top"])
+                        and (t is None or t == prev.get("total"))):
+                    return Jobs(jobs, total, top, complete=False)
+            for j in jobs:
+                if j["key"] not in seen:
+                    seen.add(j["key"])
+                    out.append(j)
+    finally:
+        await pages.aclose()
+    return Jobs(out, total, top, complete=True)
+
+
 def _parts(url: str):
     s = urlsplit(url.strip())
     host = (s.hostname or "").lower()
@@ -101,48 +138,58 @@ async def ashby(c: Client, url: str):
     return out
 
 
-async def smartrecruiters(c: Client, url: str):
+async def _smartrecruiters_pages(c: Client, url: str):
     _, host, path = _parts(url)
     if "smartrecruiters.com" not in host or not path:
         raise Unsupported("custom SmartRecruiters domain")
     co = path[0]
-    out, offset = [], 0
+    offset = 0
     while True:
         d = await c.get_json(f"https://api.smartrecruiters.com/v1/companies/{co}/postings?limit=100&offset={offset}")
         content = d.get("content", [])
+        page = []
         for j in content:
             l = j.get("location") or {}
             loc = l.get("fullLocation") or ", ".join(x for x in [l.get("city"), l.get("region")] if x)
-            out.append(dict(
+            page.append(dict(
                 key=f"sr:{co}:{j['id']}", title=j.get("name"), loc=loc, country=l.get("country"),
                 remote=l.get("remote"), posted=j.get("releasedDate"),
                 url=f"https://jobs.smartrecruiters.com/{co}/{j['id']}"))
+        yield page, d.get("totalFound")
         offset += 100
-        if not content or offset >= d.get("totalFound", 0) or offset >= 5000:
-            return out
+        if not content or offset >= (d.get("totalFound") or 0) or offset >= 5000:
+            return
 
 
-async def workable(c: Client, url: str):
+async def smartrecruiters(c: Client, url: str, prev=None):
+    return await paginate(_smartrecruiters_pages(c, url), prev)
+
+
+async def _workable_pages(c: Client, url: str):
     _, host, path = _parts(url)
     if "workable.com" not in host or not path:
         raise Unsupported("custom Workable domain")
     sub = path[0]
     body = {"query": "", "department": [], "location": [], "remote": [], "workplace": [], "worktype": []}
-    out = []
     for _ in range(50):
         d = await c.post_json(f"https://apply.workable.com/api/v3/accounts/{sub}/jobs", body)
+        page = []
         for j in d.get("results", []):
             l = j.get("location") or {}
-            out.append(dict(
+            page.append(dict(
                 key=f"wk:{sub}:{j['shortcode']}", title=j.get("title"),
                 loc=", ".join(x for x in [l.get("city"), l.get("region"), l.get("country")] if x),
                 country=l.get("countryCode") or l.get("country"),
                 remote=j.get("remote") or j.get("workplace") == "remote", posted=j.get("published"),
                 url=f"https://apply.workable.com/{sub}/j/{j['shortcode']}/"))
+        yield page, d.get("total")
         if not d.get("nextPage"):
-            break
+            return
         body["token"] = d["nextPage"]
-    return out
+
+
+async def workable(c: Client, url: str, prev=None):
+    return await paginate(_workable_pages(c, url), prev)
 
 
 async def recruitee(c: Client, url: str):
@@ -237,7 +284,7 @@ def _wd_posted(s: str | None):
     return f"-{m.group(1)}d" if m else None
 
 
-async def workday(c: Client, url: str, max_jobs: int = 10000):
+async def _workday_pages(c: Client, url: str, max_jobs: int = 10000):
     _, host, path = _parts(url)
     if "myworkdayjobs.com" not in host:
         raise Unsupported("custom Workday domain")
@@ -247,22 +294,28 @@ async def workday(c: Client, url: str, max_jobs: int = 10000):
         raise Unsupported("no Workday site in URL")
     site = path[0]
     api = f"https://{host}/wday/cxs/{tenant}/{site}/jobs"
-    out, offset, total = [], 0, None
+    offset, total = 0, None
     while True:
         d = await c.post_json(api, {"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": ""})
-        if total is None:
+        if total is None:  # Workday only reports the total on the first page
             total = d.get("total") or 0
         posts = d.get("jobPostings", [])
+        page = []
         for j in posts:
             ext = j.get("externalPath") or ""
             req = (j.get("bulletFields") or [None])[0] or ext.rsplit("_", 1)[-1]
-            out.append(dict(
+            page.append(dict(
                 key=f"wd:{tenant}:{req}", title=j.get("title"), loc=j.get("locationsText"),
                 remote=j.get("remoteType"), posted=_wd_posted(j.get("postedOn")),
                 url=f"https://{host}/en-US/{site}{ext}"))
+        yield page, total
         offset += 20
         if not posts or offset >= total or offset >= max_jobs:
-            return out
+            return
+
+
+async def workday(c: Client, url: str, prev=None):
+    return await paginate(_workday_pages(c, url), prev)
 
 
 async def paylocity(c: Client, url: str):
@@ -282,7 +335,7 @@ async def paylocity(c: Client, url: str):
     return out
 
 
-async def adp(c: Client, url: str):
+async def _adp_pages(c: Client, url: str):
     s, host, _ = _parts(url)
     if host != "workforcenow.adp.com":
         raise Unsupported("ADP MyJobs sites need a session token")
@@ -290,35 +343,41 @@ async def adp(c: Client, url: str):
     cid, ccid = q.get("cid", [None])[0], q.get("ccId", ["19000101_000001"])[0]
     if not cid:
         raise Unsupported("no ADP cid")
-    out, skip = [], 0
+    skip = 0
     base = "https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions"
     while True:
         qs = urlencode({"cid": cid, "ccId": ccid, "lang": "en_US", "locale": "en_US", "$top": 100, "$skip": skip})
         d = await c.get_json(f"{base}?{qs}")
         reqs = d.get("jobRequisitions", [])
+        page = []
         for j in reqs:
             locs = j.get("requisitionLocations") or []
             a = (locs[0].get("address") or {}) if locs else {}
             st = ((a.get("countrySubdivisionLevel1") or {}).get("codeValue"))
             loc = ", ".join(x for x in [a.get("cityName"), st] if x) or (
                 (locs[0].get("nameCode") or {}).get("shortName") if locs else None)
-            out.append(dict(
+            page.append(dict(
                 key=f"adp:{cid}:{j['itemID']}", title=j.get("requisitionTitle"), loc=loc,
                 country=(a.get("country") or {}).get("codeValue"), posted=j.get("postDate"),
                 url=f"{url}&jobId={j['itemID']}"))
+        total = (d.get("meta") or {}).get("totalNumber")
+        yield page, total
         skip += 100
-        total = (d.get("meta") or {}).get("totalNumber", 0)
-        if not reqs or skip >= total or skip >= 3000:
-            return out
+        if not reqs or skip >= (total or 0) or skip >= 3000:
+            return
 
 
-async def ukg(c: Client, url: str):
+async def adp(c: Client, url: str, prev=None):
+    return await paginate(_adp_pages(c, url), prev)
+
+
+async def _ukg_pages(c: Client, url: str):
     s, host, path = _parts(url)
     if "JobBoard" not in path:
         raise Unsupported("unrecognised UKG URL")
     i = path.index("JobBoard")
     board = f"https://{host}/{'/'.join(path[:i + 2])}"
-    out, skip = [], 0
+    skip = 0
     while True:
         body = {"opportunitySearch": {
             "Top": 50, "Skip": skip, "QueryString": "",
@@ -328,41 +387,53 @@ async def ukg(c: Client, url: str):
                               "Skills": [], "hasNoLicenses": False, "SkippedSkills": []}}
         d = await c.post_json(f"{board}/JobBoardView/LoadSearchResults", body)
         opps = d.get("opportunities", [])
+        page = []
         for j in opps:
             locs = j.get("Locations") or [{}]
             a = (locs[0] or {}).get("Address") or {}
             loc = ", ".join(x for x in [a.get("City"), (a.get("State") or {}).get("Code")] if x) or (locs[0] or {}).get("LocalizedDescription")
-            out.append(dict(
+            page.append(dict(
                 key=f"ukg:{path[i - 1]}:{j['Id']}", title=j.get("Title"), loc=loc,
                 country=(a.get("Country") or {}).get("Code"), remote=j.get("JobLocationType") == 2,
                 posted=j.get("PostedDate"), url=f"{board}/OpportunityDetail?opportunityId={j['Id']}"))
+        yield page, d.get("totalCount")
         skip += 50
-        if not opps or skip >= d.get("totalCount", 0) or skip >= 3000:
-            return out
+        if not opps or skip >= (d.get("totalCount") or 0) or skip >= 3000:
+            return
 
 
-async def oracle(c: Client, url: str):
+async def ukg(c: Client, url: str, prev=None):
+    return await paginate(_ukg_pages(c, url), prev)
+
+
+async def _oracle_pages(c: Client, url: str):
     _, host, path = _parts(url)
     if "oraclecloud.com" not in host or "sites" not in path:
         raise Unsupported("Taleo/custom Oracle site")
     site = path[path.index("sites") + 1]
-    out, offset = [], 0
+    offset = 0
     while True:
         api = (f"https://{host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true"
                f"&expand=requisitionList&finder=findReqs;siteNumber={site},limit=200,offset={offset},sortBy=POSTING_DATES_DESC")
         d = await c.get_json(api)
         item = (d.get("items") or [{}])[0]
         reqs = item.get("requisitionList") or []
+        page = []
         for j in reqs:
-            out.append(dict(
+            page.append(dict(
                 key=f"orc:{host.split('.')[0]}:{j['Id']}", title=j.get("Title"),
                 loc=j.get("PrimaryLocation"), country=j.get("PrimaryLocationCountry"),
                 remote=(j.get("WorkplaceType") or "").lower().startswith("remote"),
                 posted=j.get("PostedDate"),
                 url=f"https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{j['Id']}"))
+        yield page, item.get("TotalJobsCount")
         offset += 200
         if not reqs or offset >= (item.get("TotalJobsCount") or 0) or offset >= 5000:
-            return out
+            return
+
+
+async def oracle(c: Client, url: str, prev=None):
+    return await paginate(_oracle_pages(c, url), prev)
 
 
 # ---------------------------------------------------------------- HTML boards
@@ -400,12 +471,13 @@ async def jobvite(c: Client, url: str):
     return _dedupe(out)
 
 
-async def icims(c: Client, url: str):
+async def _icims_pages(c: Client, url: str):
     _, host, _ = _parts(url)
-    out, seen = [], set()
-    for page in range(40):
-        soup = BeautifulSoup(await c.get_text(f"https://{host}/jobs/search?ss=1&in_iframe=1&pr={page}"), "lxml")
+    seen = set()
+    for pr in range(40):
+        soup = BeautifulSoup(await c.get_text(f"https://{host}/jobs/search?ss=1&in_iframe=1&pr={pr}"), "lxml")
         new = 0
+        out = []
         for a in soup.select('a[href*="/jobs/"]'):
             m = re.search(r"/jobs/(\d+)/", a.get("href", ""))
             if not m or m.group(1) in seen:
@@ -420,8 +492,12 @@ async def icims(c: Client, url: str):
             out.append(dict(key=f"icims:{_sub(host)}:{m.group(1)}", title=title,
                             loc=lm.group(1) if lm else None, url=a["href"].split("?")[0]))
         if new == 0:
-            break
-    return out
+            return
+        yield out, None  # iCIMS search pages report no total
+
+
+async def icims(c: Client, url: str, prev=None):
+    return await paginate(_icims_pages(c, url), prev)
 
 
 def _dedupe(jobs):
@@ -444,6 +520,10 @@ FETCHERS = {
     "Workday": workday, "Paylocity": paylocity, "ADP": adp, "UltiPro / UKG": ukg,
     "Oracle Recruiting": oracle, "JazzHR": jazzhr, "Jobvite": jobvite, "iCIMS": icims,
 }
+
+
+# fetchers that page through results and accept `prev` for the page-1 change check
+PAGINATED = {"SmartRecruiters", "Workable", "Workday", "ADP", "UltiPro / UKG", "Oracle Recruiting", "iCIMS"}
 
 
 def fetcher_for(ats: str):

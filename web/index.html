@@ -66,7 +66,8 @@
   </section>
 
   <section id="tab-coverage" class="tab" hidden>
-    <p class="note">Each board is fetched daily from its ATS's public job feed. Only US (or unspecified-location) postings are kept. Boards on systems without a public feed are listed in Companies with a link, but their jobs aren't indexed yet.</p>
+    <p class="note">Boards are refreshed daily from each ATS's public job feed; a full sweep of every board runs weekly. Daily runs skip boards that were empty and stop after page 1 when nothing changed. Only US (or unspecified-location) postings are kept. Boards on systems without a public feed are listed in Companies with a link, but their jobs aren't indexed yet.</p>
+    <p class="note" id="run"></p>
     <div class="table-wrap"><table id="coverage"></table></div>
   </section>
 </main>

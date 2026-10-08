@@ -164,10 +164,25 @@ async function loadCompanies(reset) {
 
 // ---------- Coverage tab
 function renderCoverage() {
+  const r = meta.run;
+  if (r) {
+    const o = r.outcome || {};
+    const mins = (r.fetch_seconds / 60).toFixed(1);
+    const parts = [
+      `Last run (${r.mode === "full" ? "full sweep" : "daily incremental"})` +
+        (r.shards ? `: ${fmt.format(r.requests)} requests in ${mins} min across ${r.shards} runners` : ""),
+      o.fetched != null && `${fmt.format(o.fetched)} boards fully fetched`,
+      o.page1_unchanged && `${fmt.format(o.page1_unchanged)} unchanged after page 1`,
+      o.skipped_empty && `${fmt.format(o.skipped_empty)} empty boards skipped (re-checked weekly)`,
+      (o.error || o.error_kept_last) && `${fmt.format((o.error || 0) + (o.error_kept_last || 0))} failed`,
+      r.throttled && `${fmt.format(r.throttled)} rate-limit responses`,
+    ].filter(Boolean);
+    $("#run").textContent = parts.join(" · ") + ".";
+  }
   const rows = Object.entries(meta.by_ats);
   const max = Math.max(1, ...rows.map(([, a]) => a.jobs));
-  $("#coverage").innerHTML = `<thead><tr><th>ATS</th><th>Boards</th><th>Fetched</th><th>Not indexed</th><th>US jobs</th></tr></thead><tbody>` +
-    rows.map(([name, a]) => `<tr><td>${esc(name)}</td><td>${fmt.format(a.boards)}</td><td>${fmt.format(a.ok)}</td><td>${fmt.format(a.unsupported)}</td>
+  $("#coverage").innerHTML = `<thead><tr><th>ATS</th><th>Boards</th><th>Fetched</th><th>Failed</th><th>Not indexed</th><th>US jobs</th></tr></thead><tbody>` +
+    rows.map(([name, a]) => `<tr><td>${esc(name)}</td><td>${fmt.format(a.boards)}</td><td>${fmt.format(a.ok)}</td><td>${fmt.format(a.error || 0)}</td><td>${fmt.format(a.unsupported)}</td>
       <td>${fmt.format(a.jobs)}<span class="bar" style="width:${Math.max(2, Math.round((a.jobs / max) * 60))}px"></span></td></tr>`).join("") + "</tbody>";
 }
 
