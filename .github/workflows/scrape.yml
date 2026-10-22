@@ -93,7 +93,7 @@ jobs:
           --mode ${{ needs.plan.outputs.mode }} --state state --out out
           --limit ${{ github.event.inputs.limit || 0 }}
           --max-minutes ${{ needs.plan.outputs.minutes }}
-          --rps 4 --per-host 6
+          --rps 4 --concurrency 160 --per-host 12
       - uses: actions/upload-artifact@v4
         with:
           name: shard-${{ matrix.shard }}
