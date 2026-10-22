@@ -21,16 +21,13 @@ class Unsupported(Exception):
     pass
 
 
-MAX_DESC = 300_000  # chars; a sanity cap, not a display limit
-
-
 def _html(s):
     """Description HTML from an ATS field. Some APIs entity-escape their HTML; undo that once."""
     if not s or not isinstance(s, str):
         return None
     if "&lt;" in s and "<" not in s:
         s = html.unescape(s)
-    return s[:MAX_DESC]
+    return s
 
 
 def _plain_html(s):
