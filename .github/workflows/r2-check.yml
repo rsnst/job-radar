@@ -1,0 +1,29 @@
+# Manual check that the R2 secrets work: uploads a small test object and lists the bucket.
+name: R2 check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Upload and list
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          pip install -q boto3
+          python - <<'PY'
+          import os, boto3
+          s3 = boto3.client("s3", endpoint_url=os.environ["R2_ENDPOINT"], region_name="auto")
+          b = os.environ["R2_BUCKET"]
+          s3.put_object(Bucket=b, Key="check/hello.txt", Body=b"job-radar r2 check ok")
+          keys = [o["Key"] for o in s3.list_objects_v2(Bucket=b, Prefix="check/").get("Contents", [])]
+          print("bucket:", b, "objects under check/:", keys)
+          PY
