@@ -13,9 +13,8 @@ from pathlib import Path
 
 def files_in(root: Path):
     data = sorted(p for p in (root / "db").glob("*") if p.is_file())
-    rest = [root / "config.json"] if (root / "config.json").exists() else []
     meta = [root / "meta.json"] if (root / "meta.json").exists() else []
-    return [(p, p.relative_to(root).as_posix()) for p in data + rest] + [(p, p.name) for p in meta]
+    return [(p, p.relative_to(root).as_posix()) for p in data] + [(p, p.name) for p in meta]
 
 
 def main(argv):
@@ -38,7 +37,7 @@ def main(argv):
         ctype = mimetypes.guess_type(key)[0] or "application/octet-stream"
         with p.open("rb") as f:
             s3.upload_fileobj(f, bucket, key, ExtraArgs={"ContentType": ctype,
-                                                         "CacheControl": "no-cache" if key == "meta.json" else "public, max-age=604800"})
+                                                         "CacheControl": "public, max-age=300" if key.startswith("db/") else "no-cache"})
         print(f"uploaded {key} ({p.stat().st_size} bytes)", flush=True)
     return 0
 

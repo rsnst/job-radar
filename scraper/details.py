@@ -91,6 +91,7 @@ async def _pinpoint(c, u, cache):
     return ""
 
 
+_LEAD_HEADING = re.compile(r"^\s*<h[1-6][^>]*>\s*Description\s*</h[1-6]>", re.I)
 _LD = re.compile(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>([\s\S]*?)</script>')
 
 
@@ -111,7 +112,8 @@ async def _jobposting_from_page(c, url):
                 continue
             t = node.get("@type")
             if "JobPosting" in (t if isinstance(t, list) else [t]) and isinstance(node.get("description"), str):
-                return node["description"]
+                # the app adds its own "About the role" heading, so drop a leading "Description" heading
+                return _LEAD_HEADING.sub("", node["description"], count=1)
     return ""
 
 

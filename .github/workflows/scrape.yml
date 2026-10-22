@@ -48,6 +48,7 @@ jobs:
     outputs:
       mode: ${{ steps.m.outputs.mode }}
       minutes: ${{ steps.m.outputs.minutes }}
+      details: ${{ steps.m.outputs.details }}
     steps:
       - id: st
         uses: actions/cache/restore@v4
@@ -66,8 +67,11 @@ jobs:
           fi
           # incremental: stop starting requests after 12 min (typical: ~6); boards not reached keep yesterday's jobs
           if [ "$mode" = full ]; then minutes=120; else minutes=12; fi
+          # full descriptions: per-job lookups stop after this many minutes; new postings only in incremental
+          if [ "$mode" = full ]; then details=60; else details=8; fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
+          echo "details=$details" >> "$GITHUB_OUTPUT"
           echo "### Mode: $mode" >> "$GITHUB_STEP_SUMMARY"
 
   scrape:
@@ -88,12 +92,18 @@ jobs:
           path: state/boards.json.gz
           key: boards-state-${{ github.run_id }}
           restore-keys: boards-state-
+      - uses: actions/cache/restore@v4
+        with:
+          path: state/jobs.jsonl.gz
+          key: jobs-state-${{ github.run_id }}
+          restore-keys: jobs-state-
       - name: Fetch boards
         run: >
           python -m scraper.run --shard ${{ matrix.shard }} --of $SHARDS
           --mode ${{ needs.plan.outputs.mode }} --state state --out out
           --limit ${{ github.event.inputs.limit || 0 }}
           --max-minutes ${{ needs.plan.outputs.minutes }}
+          --details-minutes ${{ needs.plan.outputs.details }}
           --rps 4 --concurrency 160 --per-host 12
       - uses: actions/upload-artifact@v4
         with:
@@ -148,6 +158,15 @@ jobs:
           for a, v in m["by_ats"].items():
               print(f"| {a} | {v['boards']:,} | {v['ok']:,} | {v['error']:,} | {v['unsupported']:,} | {v['jobs']:,} |")
           PY
+      # the R2 copy is staged here; the live site still reads GitHub Pages until vercel.json points at R2
+      - name: Upload data to R2
+        continue-on-error: true
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python scripts/publish_r2.py site
       - uses: actions/cache/save@v4
         with:
           path: state/boards.json.gz

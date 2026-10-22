@@ -25,9 +25,10 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .adapters import PAGINATED, Unsupported, fetcher_for
+from .details import DETAIL_ATS, describe
 from .http import Client, Deadline, FetchError
 from .location import classify, is_remote
-from .state import day, load_boards_state
+from .state import day, load_boards_state, load_jobs_state
 
 ROOT = Path(__file__).resolve().parent.parent
 BOARDS = ROOT / "data" / "boards.csv.gz"
@@ -105,7 +106,39 @@ def plan(board: dict, prev: dict | None, mode: str, today: date) -> tuple[str, d
     return "fetch", None
 
 
-async def run_board(c: Client, board: dict, prev: dict | None, mode: str, today: date):
+async def attach_details(c: Client, board: dict, jobs: list[dict], prev_x: dict, cache: dict,
+                         stop_at: float) -> int:
+    """Fill in full descriptions ("x") for jobs on ATSs whose list doesn't carry them.
+
+    A job that already has text from an earlier run keeps it (prev_x, keyed by job key), so only
+    new postings cost a request. Stops at stop_at (monotonic time); the rest stay without text
+    and get picked up by a later run. Returns how many descriptions were fetched.
+    """
+    if board["ats"] not in DETAIL_ATS:
+        return 0
+    fetched = 0
+    for j in jobs:
+        if j.get("x"):
+            continue
+        if j["k"] in prev_x:
+            j["x"] = prev_x[j["k"]]
+            continue
+        if time.monotonic() > stop_at:
+            break
+        try:
+            x = await describe(c, j["url"], cache)
+        except Deadline:
+            break
+        except Exception:  # one bad posting must not cost the board its job list
+            continue
+        if x:
+            j["x"] = x
+            fetched += 1
+    return fetched
+
+
+async def run_board(c: Client, board: dict, prev: dict | None, mode: str, today: date,
+                    prev_x: dict | None = None, details_stop: float | None = None, dcache: dict | None = None):
     action, probe = plan(board, prev, mode, today)
     base = {"b": board["id"]}
     if action == "skip":
@@ -116,6 +149,9 @@ async def run_board(c: Client, board: dict, prev: dict | None, mode: str, today:
                      else fetch(c, board["board_url"]))
         jobs = [j for j in (normalize(board, r, today) for r in raw) if j]
         stat = {**base, "st": "ok", "n": len(raw), "us": len(jobs)}
+        if details_stop is not None and jobs:
+            stat["details"] = await attach_details(c, board, jobs, prev_x or {}, dcache if dcache is not None else {},
+                                                   details_stop)
         if board["ats"] in PAGINATED:
             stat.update(total=raw.total, top=raw.top, partial=int(not raw.complete))
             if not raw.complete:  # page 1 only: the real count is unchanged from last run
@@ -136,6 +172,13 @@ async def main_async(args, transport=None):
     if args.limit:
         boards = boards[: args.limit]
     prev = load_boards_state(Path(args.state)) if args.mode == "incremental" else {}
+    # descriptions from earlier runs: reused so only new postings are fetched
+    prev_x = {}
+    if args.details_minutes > 0:
+        prev_x = {url: {j["k"]: j["x"] for j in jobs if j.get("x")}
+                  for url, jobs in load_jobs_state(Path(args.state)).items()}
+    details_stop = time.monotonic() + args.details_minutes * 60 if args.details_minutes > 0 else None
+    dcache: dict = {}
     if args.mode == "incremental" and not prev:
         print(f"[shard {args.shard}] no previous state: running full", flush=True)
         args.mode = "full"
@@ -145,14 +188,16 @@ async def main_async(args, transport=None):
     t0 = time.monotonic()
     deadline = t0 + args.max_minutes * 60
     counts: dict[str, int] = {}
-    jobs_n = done = 0
+    jobs_n = done = details_n = 0
     with gzip.open(out / f"jobs-{args.shard:02d}.jsonl.gz", "wt") as jf, \
             open(out / f"boards-{args.shard:02d}.jsonl", "w") as sf:
         async with Client(transport, concurrency=args.concurrency, per_host=args.per_host, rps=args.rps) as c:
             c.deadline = deadline
             # every board is queued at once; the client's per-domain limits decide the order,
             # so one slow ATS never starves the others
-            tasks = [asyncio.create_task(run_board(c, b, prev.get(b["board_url"]), args.mode, today))
+            tasks = [asyncio.create_task(run_board(
+                        c, b, prev.get(b["board_url"]), args.mode, today,
+                        prev_x=prev_x.get(b["board_url"]), details_stop=details_stop, dcache=dcache))
                      for b in boards]
             for fut in asyncio.as_completed(tasks):
                 jobs, stat = await fut
@@ -163,11 +208,13 @@ async def main_async(args, transport=None):
                 counts[key] = counts.get(key, 0) + 1
                 done += 1
                 jobs_n += len(jobs)
+                details_n += stat.get("details", 0)
                 if done % 1000 == 0:
                     print(f"[shard {args.shard}] {done}/{len(boards)} boards, {c.requests} req, "
                           f"{time.monotonic() - t0:.0f}s", flush=True)
             summary = {"shard": args.shard, "mode": args.mode, "boards": len(boards), "requests": c.requests,
-                       "throttled": c.throttled, "jobs": jobs_n, "seconds": round(time.monotonic() - t0, 1),
+                       "throttled": c.throttled, "jobs": jobs_n, "details": details_n,
+                       "seconds": round(time.monotonic() - t0, 1),
                        **dict(sorted(counts.items()))}
     (out / f"summary-{args.shard:02d}.json").write_text(json.dumps(summary))
     print(json.dumps(summary), flush=True)
@@ -189,6 +236,9 @@ def parse(argv=None):
     p.add_argument("--rps", type=float, default=2.0, help="requests/second per ATS domain (0 = unlimited)")
     p.add_argument("--max-minutes", type=float, default=300,
                    help="stop starting new boards after this; unstarted boards keep last run's jobs")
+    p.add_argument("--details-minutes", type=float, default=0,
+                   help="fetch full descriptions for ATSs that need a per-job lookup, for this many minutes "
+                        "(0 = off). Descriptions already held from earlier runs are reused.")
     p.add_argument("--full-max-minutes", type=float, default=120,
                    help="time budget used instead when an incremental run has to fall back to full")
     p.add_argument("--today", default="", help=argparse.SUPPRESS)
