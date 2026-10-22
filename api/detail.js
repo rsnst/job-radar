@@ -74,6 +74,32 @@ async function pinpoint(u) {
     .filter((x) => typeof x === "string" && x).join("");
 }
 
+// Many career pages include a schema.org JobPosting block in the HTML with the full description.
+async function jobPostingFromPage(url) {
+  const r = await fetch(url, {
+    headers: { accept: "text/html", "user-agent": "job-radar/1.0" },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  for (const m of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/g)) {
+    let data;
+    try { data = JSON.parse(m[1]); } catch { continue; }
+    for (const node of [].concat(data, data && data["@graph"] || [])) {
+      const type = node && node["@type"];
+      if ((Array.isArray(type) ? type : [type]).includes("JobPosting") && typeof node.description === "string") {
+        return node.description;
+      }
+    }
+  }
+  return "";
+}
+
+// recruiting.paylocity.com/Recruiting/Jobs/Details/{id}
+async function paylocity(u) {
+  return jobPostingFromPage(u.href);
+}
+
 const ROUTES = [
   { match: (h) => h === "ats.rippling.com", fetch: rippling },
   { match: (h) => h.endsWith(".myworkdayjobs.com"), fetch: workday },
@@ -81,6 +107,7 @@ const ROUTES = [
   { match: (h) => h.endsWith(".bamboohr.com"), fetch: bamboohr },
   { match: (h) => h === "apply.workable.com", fetch: workable },
   { match: (h) => h.endsWith(".pinpointhq.com"), fetch: pinpoint },
+  { match: (h) => h === "recruiting.paylocity.com", fetch: paylocity },
 ];
 
 export default async function handler(req, res) {
