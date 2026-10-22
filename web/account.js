@@ -20,7 +20,7 @@ export async function initAccount() {
   try {
     const { createClient } = await import(SUPABASE_JS);
     sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-      auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" },
+      auth: { persistSession: true, detectSessionInUrl: true, flowType: "implicit" },
     });
     account.enabled = true;
     const { data } = await sb.auth.getSession();
