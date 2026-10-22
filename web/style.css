@@ -111,3 +111,7 @@ tr:last-child td { border-bottom: 0; }
 
 .foot { max-width: 880px; margin: 0 auto; padding: 0 16px calc(env(safe-area-inset-bottom) + 24px); display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; }
 .err { background: var(--warn-soft); color: var(--warn); padding: 12px 14px; border-radius: var(--radius); }
+
+.auth { margin-left: auto; }
+.save { font: inherit; font-size: 0.85em; padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; background: none; color: inherit; cursor: pointer; }
+.save.on { background: currentColor; color: var(--bg, #fff); }

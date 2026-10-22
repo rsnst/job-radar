@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "vendor": "node scripts/vendor.mjs"
+    "vendor": "node scripts/vendor.mjs",
+    "build": "node scripts/vendor.mjs site && node scripts/write-config.mjs site"
   },
   "dependencies": {
     "sql.js-httpvfs": "0.8.12"

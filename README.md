@@ -87,3 +87,27 @@ Each job's first-seen date is carried between runs in the saved state. The app b
 - GitHub's runners use datacenter IPs. If an ATS throttles or blocks them, the timings above stretch out (the 12-minute budget caps the damage) or that ATS's boards fail. The run summary shows rate-limit counts per run. Lower `--rps` if they climb.
 - Scheduled workflows can start late when GitHub is busy, often 5–30 minutes.
 - GitHub Pages has a ~1 GB site limit. At ~2M jobs the DB is ~600 MB.
+
+## Vercel front end and accounts (optional)
+
+The data stays on GitHub Pages. Vercel serves the UI and proxies `/db/*` and `meta.json` to your Pages site, so the browser makes same-origin requests and needs no CORS setup.
+
+**1. Supabase** (free project, under the Supabase account for sr.jan2997@gmail.com)
+- Run `supabase/schema.sql` in the SQL editor.
+- Authentication → Providers → enable **Google** (needs a Google OAuth client).
+- Authentication → URL configuration: add your Vercel URL to Site URL and Redirect URLs.
+
+**2. Vercel** (Hobby plan, same email)
+- Import the GitHub repo `rsnst/job-radar`. The build settings come from `vercel.json`.
+- Environment variables (Production and Preview):
+  - `SUPABASE_URL`: the project URL
+  - `SUPABASE_ANON_KEY`: the anon public key. This is public by design; row-level security protects the data.
+- **Never** set `SUPABASE_SERVICE_ROLE_KEY` in Vercel. The build refuses to run if it's present.
+
+**3. Check**
+- Open the Vercel URL. The job search should show results (served through the rewrites).
+- Sign in, click **Save** on a job, and check the **Saved** tab.
+
+If the GitHub repo name is different from `rsnst/job-radar`, edit the two `destination` URLs in `vercel.json`.
+
+Without the Supabase variables, the site still works as a public search. Sign-in and Save are hidden.

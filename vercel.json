@@ -1,0 +1,14 @@
+{
+  "framework": null,
+  "buildCommand": "npm ci && node scripts/vendor.mjs site && node scripts/write-config.mjs site",
+  "outputDirectory": "site",
+  "cleanUrls": false,
+  "rewrites": [
+    { "source": "/db/:path*", "destination": "https://rsnst.github.io/job-radar/db/:path*" },
+    { "source": "/meta.json", "destination": "https://rsnst.github.io/job-radar/meta.json" }
+  ],
+  "headers": [
+    { "source": "/config.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/meta.json", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ]
+}

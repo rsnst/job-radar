@@ -10,6 +10,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='none' stroke='%23e5533d' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23e5533d' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23e5533d'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
 </head>
 <body>
 <header class="top">
@@ -23,8 +24,10 @@
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="jobs" aria-selected="true">Jobs</button>
     <button role="tab" data-tab="companies" aria-selected="false">Companies</button>
+    <button role="tab" data-tab="saved" aria-selected="false">Saved</button>
     <button role="tab" data-tab="coverage" aria-selected="false">Coverage</button>
   </nav>
+  <button type="button" id="auth" class="link auth" hidden>Sign in</button>
 </header>
 
 <main>
@@ -63,6 +66,11 @@
     </form>
     <ol id="companies" class="list"></ol>
     <div id="co-more" class="more"></div>
+  </section>
+
+  <section id="tab-saved" class="tab" hidden>
+    <p id="saved-msg" class="note"></p>
+    <ol id="saved" class="list"></ol>
   </section>
 
   <section id="tab-coverage" class="tab" hidden>
