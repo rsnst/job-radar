@@ -1,4 +1,5 @@
 import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
+import { startAdminRuns, stopAdminRuns } from "./admin-runs.js";
 import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
@@ -318,7 +319,7 @@ function showTab(tab) {
   for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
   for (const t of ["jobs", "companies", "saved", "coverage", "admin"]) $("#tab-" + t).hidden = t !== tab;
   if (tab === "saved") loadSaved();
-  if (tab === "admin" && account.isAdmin) renderAdmin();
+  if (tab === "admin" && account.isAdmin) { renderAdmin(); startAdminRuns(); } else stopAdminRuns();
   if (tab === "companies" && !coLoaded && db) { coLoaded = true; loadCompanies(true); }
   writeHash(S);
 }

@@ -112,3 +112,10 @@ export async function listSaved() {
   if (error) throw error;
   return data || [];
 }
+
+// The signed-in user's access token, for calls to our own admin functions.
+export async function accessToken() {
+  if (!sb) return null;
+  const { data } = await sb.auth.getSession();
+  return data.session?.access_token ?? null;
+}

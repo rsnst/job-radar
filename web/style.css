@@ -396,3 +396,22 @@ body { background: var(--bg); }
   .filters.open { display: flex; }
   .stats .upd { display: none; }
 }
+
+/* ---------- admin: sweep controls, progress bar, run history */
+#admin-runs { margin-bottom: 28px; }
+.run-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.run-head h3, .hist-title { font: 600 1.05rem var(--display); margin: 0 0 4px; }
+.run-head .note { margin: 0; }
+.hist-title { margin-top: 26px; }
+.bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--line); margin: 14px 0 8px; }
+.seg { display: block; height: 100%; }
+.seg.ok { background: var(--ok); }
+.seg.running { background: var(--accent); }
+.seg.queued { background: var(--line-strong); }
+.seg.failed { background: var(--warn); }
+.bad { color: var(--warn); font-weight: 600; }
+.notice { color: var(--ok); }
+.err-note { color: var(--warn); }
+.runs-table td, .runs-table th { text-align: left; }
+.runs-table code { font-size: .82rem; }
+button[disabled] { opacity: .55; cursor: not-allowed; }
