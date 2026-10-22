@@ -349,7 +349,7 @@ async function renderDescription(j) {
     if (token !== detailToken) return;
     box.innerHTML = html
       ? `<h3>About the role</h3><div class="jd-body">${cleanHtml(html)}</div>`
-      : '<p class="note">This posting has no description on the employer’s job board. Use Apply to read the full posting.</p>';
+      : '<p class="note">The description isn’t available here yet. Use Apply to read the full posting on the employer’s site.</p>';
   } catch {
     if (token === detailToken) box.innerHTML = '<p class="note">Couldn’t load the description. Use Apply to read the full posting.</p>';
   }
