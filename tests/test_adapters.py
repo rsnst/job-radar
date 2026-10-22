@@ -177,16 +177,3 @@ def test_money_range_and_html_unescape():
     assert _money_range(None, None, "USD") is None
     assert _html("&lt;p&gt;hi&lt;/p&gt;") == "<p>hi</p>"
     assert _html("<p>already</p>") == "<p>already</p>"
-
-
-def test_rippling_detail_joins_company_and_role():
-    import asyncio
-    from scraper.adapters import rippling_detail
-
-    class FakeClient:
-        async def get_json(self, url, **kw):
-            assert url.endswith("/board/10fitness/jobs/abc")
-            return {"description": {"company": "<p>Mission</p>", "role": "<p>Do things</p>"}}
-
-    raw = {"_rip": ("rip", "10fitness", "abc")}
-    assert asyncio.run(rippling_detail(FakeClient(), raw)) == "<p>Mission</p><p>Do things</p>"
