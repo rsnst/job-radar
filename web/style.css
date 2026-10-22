@@ -418,3 +418,18 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 
 /* pay on the card: shown under the company, only when the posting lists it */
 .card .pay-line { margin: 6px 0 0; font-size: .92rem; font-weight: 600; color: var(--ok); line-height: 1.3; }
+
+/* ---------- card polish: one primary action, quieter metadata */
+.card-foot { gap: 12px; }
+.card .apply {
+  position: relative; z-index: 2; display: inline-flex; align-items: center;
+  padding: 6px 14px; border-radius: 999px; font: 600 .85rem var(--f);
+  background: var(--accent); color: #fff; text-decoration: none;
+}
+.card .apply:hover { background: var(--accent-hover); color: #fff; }
+.card .apply:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.card .badge.contract { background: var(--line); color: var(--muted); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

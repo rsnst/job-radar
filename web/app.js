@@ -111,6 +111,18 @@ function monogram(name) {
   return { letters, hue: 14 + (h % 36) }; // warm range: rust → amber
 }
 
+// "today", "3d ago", "2mo ago"; say so plainly when the feed has no date
+function posted(day) {
+  return day == null ? "Date not listed" : ago(day);
+}
+
+// Contract type that the title already states, e.g. "FTC" or "12 months"
+function contractOf(title) {
+  const m = String(title || "").match(/\b(FTC|fixed[- ]term|contract|temporary|internship|part[- ]time|seasonal)\b|\b\d+\s*months?\b/i);
+  if (!m) return "";
+  return m[1] ? m[1].replace(/^./, (c) => c.toUpperCase()) : m[0];
+}
+
 function jobCard(j) {
   jobById.set(j.id, j); // the details panel and save buttons look jobs up by id
   const co = displayName(j.company);
@@ -127,16 +139,17 @@ function jobCard(j) {
       ${account.enabled ? saveButton(j) : ""}
     </div>
     <div class="meta">
-      <span class="place">${esc(j.loc || "Location not listed")}</span>
+      <span class="place"${j.loc && !j.us ? ' title="The posting didn\'t say which country"' : ""}>${esc(j.loc || "Location not stated")}</span>
       <span>${esc(j.ats)}</span>
-      <span>${ago(j.posted)}</span>
+      <span>${posted(j.posted)}</span>
     </div>
     <div class="tags">
       ${isNew ? '<span class="badge new">New</span>' : ""}
       ${j.remote ? '<span class="badge remote">Remote</span>' : ""}
-      ${j.us ? "" : '<span class="badge unk" title="Location didn\'t say which country">Check location</span>'}
+      ${contractOf(j.title) ? `<span class="badge contract">${esc(contractOf(j.title))}</span>` : ""}
     </div>
     <div class="card-foot">
+      <a class="apply" href="${esc(j.url)}" target="_blank" rel="noopener">Apply<span class="sr-only"> for ${esc(j.title)}</span></a>
       <button type="button" class="details" data-detail="${j.id}">Details</button>
     </div>
   </li>`;
