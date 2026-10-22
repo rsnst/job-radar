@@ -297,10 +297,19 @@ async def rippling(c: Client, url: str):
         loc = wl.get("label") if isinstance(wl, dict) else wl
         jid = j.get("uuid") or j.get("id")
         out.append(dict(
-            key=f"rip:{slug}:{jid}", title=j.get("name") or j.get("title"), loc=loc,
+            key=f"rip:{slug}:{jid}", title=j.get("name") or j.get("title"), loc=loc, _rip=("rip", slug, jid),
             url=j.get("url") or f"https://ats.rippling.com/{slug}/jobs/{jid}",
             dept=(j.get("department") or {}).get("label") if isinstance(j.get("department"), dict) else None))
     return out
+
+
+async def rippling_detail(c: Client, raw: dict) -> str | None:
+    """One request per job: the list has no description, the per-job endpoint does."""
+    _, slug, jid = raw["_rip"]
+    d = await c.get_json(f"https://api.rippling.com/platform/api/ats/v1/board/{slug}/jobs/{jid}")
+    desc = d.get("description") or {}
+    parts = [desc.get("company"), desc.get("role")] if isinstance(desc, dict) else [desc]
+    return "".join(x for x in parts if x) or None
 
 
 async def pinpoint(c: Client, url: str):
@@ -576,6 +585,12 @@ FETCHERS = {
 
 # fetchers that page through results and accept `prev` for the page-1 change check
 PAGINATED = {"SmartRecruiters", "Workable", "Workday", "ADP", "UltiPro / UKG", "Oracle Recruiting", "iCIMS"}
+
+
+# ATSs whose list has no description: one extra request per job (see run.py)
+DETAIL = {
+    "Rippling": rippling_detail,
+}
 
 
 def fetcher_for(ats: str):

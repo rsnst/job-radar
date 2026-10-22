@@ -24,7 +24,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from .adapters import PAGINATED, Unsupported, fetcher_for
+from .adapters import DETAIL, PAGINATED, Unsupported, fetcher_for
 from .http import Client, Deadline, FetchError
 from .location import classify, is_remote
 from .state import day, load_boards_state
@@ -114,7 +114,21 @@ async def run_board(c: Client, board: dict, prev: dict | None, mode: str, today:
         fetch = fetcher_for(board["ats"])
         raw = await (fetch(c, board["board_url"], prev=probe) if board["ats"] in PAGINATED
                      else fetch(c, board["board_url"]))
-        jobs = [j for j in (normalize(board, r, today) for r in raw) if j]
+        pairs = [(j, r) for r in raw for j in [normalize(board, r, today)] if j]
+        if board["ats"] in DETAIL and pairs:
+            # per-job detail: one extra request each; a failed one just leaves the job without a description
+            fn = DETAIL[board["ats"]]
+
+            async def fill(j, r):
+                try:
+                    desc = await fn(c, r)
+                    if desc:
+                        j["x"] = desc
+                except (FetchError, KeyError, ValueError, TypeError, AttributeError):
+                    pass
+
+            await asyncio.gather(*(fill(j, r) for j, r in pairs))
+        jobs = [j for j, _ in pairs]
         stat = {**base, "st": "ok", "n": len(raw), "us": len(jobs)}
         if board["ats"] in PAGINATED:
             stat.update(total=raw.total, top=raw.top, partial=int(not raw.complete))
