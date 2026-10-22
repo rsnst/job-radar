@@ -405,7 +405,6 @@ function wire() {
   };
   $("#auth").addEventListener("click", () => (account.user ? signOut() : openSignIn()));
   $("#signin-close").addEventListener("click", () => $("#signin-dialog").close());
-  $("#signin-google").addEventListener("click", () => signIn());
   $("#signin-send").addEventListener("click", async () => {
     const email = $("#signin-email").value.trim();
     const msg = $("#signin-msg");
