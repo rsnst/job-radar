@@ -74,14 +74,14 @@ jobs:
         if: steps.find.outputs.go == 'true'
         with:
           path: state/boards.json.gz
-          key: boards-state-${{ github.run_id }}
-          restore-keys: boards-state-
+          key: boards-state-v2-${{ github.run_id }}
+          restore-keys: boards-state-v2-
       - uses: actions/cache/restore@v4
         if: steps.find.outputs.go == 'true'
         with:
           path: state/jobs.jsonl.gz
-          key: jobs-state-${{ github.run_id }}
-          restore-keys: jobs-state-
+          key: jobs-state-v2-${{ github.run_id }}
+          restore-keys: jobs-state-v2-
 
       - name: Build partial site
         if: steps.find.outputs.go == 'true' && steps.dl.outputs.skip == 'false'

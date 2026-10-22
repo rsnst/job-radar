@@ -54,8 +54,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: state/boards.json.gz
-          key: boards-state-${{ github.run_id }}
-          restore-keys: boards-state-
+          key: boards-state-v2-${{ github.run_id }}
+          restore-keys: boards-state-v2-
           lookup-only: true
       - id: m
         run: |
@@ -91,13 +91,13 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: state/boards.json.gz
-          key: boards-state-${{ github.run_id }}
-          restore-keys: boards-state-
+          key: boards-state-v2-${{ github.run_id }}
+          restore-keys: boards-state-v2-
       - uses: actions/cache/restore@v4
         with:
           path: state/jobs.jsonl.gz
-          key: jobs-state-${{ github.run_id }}
-          restore-keys: jobs-state-
+          key: jobs-state-v2-${{ github.run_id }}
+          restore-keys: jobs-state-v2-
       - name: Fetch boards
         run: >
           python -m scraper.run --shard ${{ matrix.shard }} --of $SHARDS
@@ -116,7 +116,7 @@ jobs:
     needs: [test, plan, scrape]
     # build even if some shards failed: their boards keep the previous run's jobs
     if: always() && needs.test.result == 'success' && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # pinned: cancellations on ubuntu-latest during the build step
     # shared with publish-partial.yml so a partial deploy can't land after this one
     concurrency: { group: pages-deploy, cancel-in-progress: false }
     environment:
@@ -134,13 +134,13 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: state/boards.json.gz
-          key: boards-state-${{ github.run_id }}
-          restore-keys: boards-state-
+          key: boards-state-v2-${{ github.run_id }}
+          restore-keys: boards-state-v2-
       - uses: actions/cache/restore@v4
         with:
           path: state/jobs.jsonl.gz
-          key: jobs-state-${{ github.run_id }}
-          restore-keys: jobs-state-
+          key: jobs-state-v2-${{ github.run_id }}
+          restore-keys: jobs-state-v2-
       - name: Build site
         run: |
           node scripts/vendor.mjs site
@@ -177,11 +177,11 @@ jobs:
       - uses: actions/cache/save@v4
         with:
           path: state/boards.json.gz
-          key: boards-state-${{ github.run_id }}
+          key: boards-state-v2-${{ github.run_id }}
       - uses: actions/cache/save@v4
         with:
           path: state/jobs.jsonl.gz
-          key: jobs-state-${{ github.run_id }}
+          key: jobs-state-v2-${{ github.run_id }}
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
       - id: deploy
