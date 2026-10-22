@@ -108,6 +108,7 @@ const ROUTES = [
   { match: (h) => h === "apply.workable.com", fetch: workable },
   { match: (h) => h.endsWith(".pinpointhq.com"), fetch: pinpoint },
   { match: (h) => h === "recruiting.paylocity.com", fetch: paylocity },
+  { match: (h) => h === "jobs.jobvite.com", fetch: jobPostingFromPage },
 ];
 
 export default async function handler(req, res) {
