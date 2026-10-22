@@ -66,9 +66,10 @@ jobs:
             else mode=incremental; fi
           fi
           # incremental: stop starting requests after 12 min (typical: ~6); boards not reached keep yesterday's jobs
-          if [ "$mode" = full ]; then minutes=120; else minutes=12; fi
+          # full: 40 shards run 20 at a time, so two waves of 25 min each keep the sweep near one hour
+          if [ "$mode" = full ]; then minutes=25; else minutes=12; fi
           # full descriptions: per-job lookups stop after this many minutes; new postings only in incremental
-          if [ "$mode" = full ]; then details=60; else details=8; fi
+          if [ "$mode" = full ]; then details=12; else details=8; fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
           echo "details=$details" >> "$GITHUB_OUTPUT"
