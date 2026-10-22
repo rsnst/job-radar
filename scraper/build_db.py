@@ -18,7 +18,6 @@ from pathlib import Path
 
 from .run import BOARDS, load_boards
 from .state import day, load_boards_state, load_jobs_state, save_boards_state, save_jobs_state
-from .pay import pay_from_text
 
 STALE_DAYS = 3  # keep a board's last jobs this long if it errors or isn't reached
 # the published DB only holds jobs posted within this many days (state keeps all of them)
@@ -199,7 +198,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                 continue
             per_board[b["id"]] += 1
             rows.append((b["id"], b["company"], b["ats"], j["t"], j["l"], j["s"], j["r"], j["u"],
-                         posted, j["f"], j["url"], j.get("p") or pay_from_text(x),
+                         posted, j["f"], j["url"], j.get("p"),
                          zlib.compress(description_bytes(x), 9) if x else None))
     rows.sort(key=lambda r: (-r[8], -r[9], r[1]))
     _log(f"built {len(rows)} rows")

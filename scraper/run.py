@@ -28,6 +28,7 @@ from .adapters import PAGINATED, Unsupported, fetcher_for
 from .details import DETAIL_ATS, describe
 from .http import Client, Deadline, FetchError
 from .location import classify, is_remote
+from .pay import pay_from_text
 from .state import day, load_boards_state, load_jobs_state
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -152,6 +153,12 @@ async def run_board(c: Client, board: dict, prev: dict | None, mode: str, today:
         if details_stop is not None and jobs:
             stat["details"] = await attach_details(c, board, jobs, prev_x or {}, dcache if dcache is not None else {},
                                                    details_stop)
+        # pay from the description, here in the shard (runs in parallel) rather than in the single build
+        for j in jobs:
+            if not j.get("p") and j.get("x"):
+                p = pay_from_text(j["x"])
+                if p:
+                    j["p"] = p
         if board["ats"] in PAGINATED:
             stat.update(total=raw.total, top=raw.top, partial=int(not raw.complete))
             if not raw.complete:  # page 1 only: the real count is unchanged from last run
