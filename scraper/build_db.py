@@ -172,10 +172,17 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
     td = day(today)
     boards, jobs_by_url, new_state, run = merge(in_dir, state_dir, today, boards_path)
 
+    # Save state first: it needs the full descriptions. After this, each description is moved
+    # out of memory as its row is built (kept compressed), so the build never holds all the text.
+    state_dir.mkdir(parents=True, exist_ok=True)
+    save_boards_state(state_dir, new_state)
+    save_jobs_state(state_dir, jobs_by_url)
+
     rows = []
     per_board = Counter()
     for b in boards:
         for j in jobs_by_url.get(b["board_url"], []):
+            x = j.pop("x", None)
             posted = day_of(j.get("d"))
             if posted is None or posted > td:
                 posted = j["f"]
@@ -183,7 +190,8 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                 continue
             per_board[b["id"]] += 1
             rows.append((b["id"], b["company"], b["ats"], j["t"], j["l"], j["s"], j["r"], j["u"],
-                         posted, j["f"], j["url"], j.get("p") or pay_from_text(j.get("x")), j.get("x")))
+                         posted, j["f"], j["url"], j.get("p") or pay_from_text(x),
+                         zlib.compress(description_bytes(x), 9) if x else None))
     rows.sort(key=lambda r: (-r[8], -r[9], r[1]))
 
     by_ats = defaultdict(lambda: {"boards": 0, "ok": 0, "error": 0, "unsupported": 0, "jobs": 0})
@@ -200,7 +208,6 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
 
     site_db = site / "db"
     site_db.mkdir(parents=True, exist_ok=True)
-    state_dir.mkdir(parents=True, exist_ok=True)
     tmp = site / "db.sqlite3.build"
     if tmp.exists():
         tmp.unlink()
@@ -212,8 +219,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [r[:12] for r in rows])
     # rowids are 1..n in insertion order, so a job's id is its position in `rows`
     con.executemany("INSERT INTO job_details(job_id, body) VALUES (?, ?)",
-                    ((i, zlib.compress(description_bytes(r[12]), 9))
-                     for i, r in enumerate(rows, start=1) if r[12]))
+                    ((i, r[12]) for i, r in enumerate(rows, start=1) if r[12]))
     con.commit()
     con.executescript(INDEXES)
     con.execute("ANALYZE")
@@ -271,8 +277,6 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
         "run": run,
     }
     (site / "meta.json").write_text(json.dumps(meta, indent=1))
-    save_boards_state(state_dir, new_state)
-    save_jobs_state(state_dir, jobs_by_url)
     tmp.unlink()
     return meta
 
