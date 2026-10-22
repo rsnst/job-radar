@@ -218,6 +218,7 @@ tr:last-child td { border-bottom: 0; }
   cursor: pointer; align-self: center;
 }
 .auth:hover { border-color: var(--accent); color: var(--accent-ink); }
+.auth.link { text-decoration: none; }
 .auth { position: absolute; right: 20px; top: calc(env(safe-area-inset-top) + 12px); }
 .top { position: sticky; }
 .brand { padding-right: 130px; }
