@@ -285,39 +285,39 @@ dialog.signin input { font: inherit; padding: .6rem .7rem; border: 1px solid var
 
 /* ---------- Job Compass: warm theme, job cards in a grid ---------- */
 :root {
-  --bg: #f6efe4;            /* warm linen */
-  --surface: #fffaf2;
-  --ink: #2b1f15;          /* espresso ink */
-  --muted: #7d6a5a;
-  --line: #e8dccb;
-  --line-strong: #d3c1a8;
-  --accent: #a4472a;       /* brick */
-  --accent-hover: #87371f;
-  --accent-ink: #8e3b22;
-  --accent-soft: #f6e4d7;
-  --focus: rgba(164, 71, 42, .28);
-  --ok: #4f6b3a; --ok-soft: #e9efdd;
-  --warn: #8a5a14; --warn-soft: #f6e9cf;
+  --bg: #fbf1e1;            /* warm linen */
+  --surface: #fffcf6;
+  --ink: #2a1608;          /* espresso ink */
+  --muted: #8a6248;
+  --line: #f0d9bd;
+  --line-strong: #dfb995;
+  --accent: #c2410c;       /* brick */
+  --accent-hover: #9a3412;
+  --accent-ink: #b43c0b;
+  --accent-soft: #ffe8d1;
+  --focus: rgba(194, 65, 12, .3);
+  --ok: #3f7d2e; --ok-soft: #e3f3d9;
+  --warn: #a15c00; --warn-soft: #ffefc7;
   --shadow: 0 1px 0 rgba(43, 31, 21, .04), 0 6px 18px -14px rgba(43, 31, 21, .3);
   --display: "Fraunces", Georgia, "Times New Roman", serif;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1f1812; --surface: #2a2118; --ink: #f2e7d6; --muted: #b3a08b;
-    --line: #3d3024; --line-strong: #54443a;
-    --accent: #e39a72; --accent-hover: #f0b08c; --accent-ink: #efb08d;
-    --accent-soft: #3a2a1f; --focus: rgba(227, 154, 114, .3);
-    --ok: #a9c48a; --ok-soft: #26301d; --warn: #e8c07a; --warn-soft: #2f2716;
+    --bg: #211509; --surface: #30200f; --ink: #fbeedd; --muted: #c9a989;
+    --line: #4a3420; --line-strong: #634a2c;
+    --accent: #fb9a4b; --accent-hover: #fdb274; --accent-ink: #fdb27a;
+    --accent-soft: #46290f; --focus: rgba(251, 154, 75, .32);
+    --ok: #b5dc8f; --ok-soft: #22361a; --warn: #f5c86b; --warn-soft: #3a2a0c;
     --shadow: none; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #1f1812; --surface: #2a2118; --ink: #f2e7d6; --muted: #b3a08b;
-  --line: #3d3024; --line-strong: #54443a;
-  --accent: #e39a72; --accent-hover: #f0b08c; --accent-ink: #efb08d;
-  --accent-soft: #3a2a1f; --focus: rgba(227, 154, 114, .3);
-  --ok: #a9c48a; --ok-soft: #26301d; --warn: #e8c07a; --warn-soft: #2f2716;
+  --bg: #211509; --surface: #30200f; --ink: #fbeedd; --muted: #c9a989;
+  --line: #4a3420; --line-strong: #634a2c;
+  --accent: #fb9a4b; --accent-hover: #fdb274; --accent-ink: #fdb27a;
+  --accent-soft: #46290f; --focus: rgba(251, 154, 75, .32);
+  --ok: #b5dc8f; --ok-soft: #22361a; --warn: #f5c86b; --warn-soft: #3a2a0c;
   --shadow: none; color-scheme: dark;
 }
 body { background: var(--bg); }
@@ -341,12 +341,12 @@ body { background: var(--bg); }
 .card-title { min-width: 0; }
 .mono {
   flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
-  font: 600 .95rem/1 var(--display); color: hsl(var(--h) 55% 30%); background: hsl(var(--h) 75% 91%);
+  font: 600 .95rem/1 var(--display); color: hsl(var(--h) 85% 32%); background: hsl(var(--h) 95% 90%);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .mono { color: hsl(var(--h) 85% 82%); background: hsl(var(--h) 35% 22%); }
+  :root:not([data-theme="light"]) .mono { color: hsl(var(--h) 95% 78%); background: hsl(var(--h) 60% 24%); }
 }
-:root[data-theme="dark"] .mono { color: hsl(var(--h) 85% 82%); background: hsl(var(--h) 35% 22%); }
+:root[data-theme="dark"] .mono { color: hsl(var(--h) 95% 78%); background: hsl(var(--h) 60% 24%); }
 .card .t { font: 600 1.08rem/1.25 var(--display); margin: 0 0 3px; text-wrap: balance; }
 .card .t a { color: var(--ink); text-decoration: none; }
 .card .t a:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
