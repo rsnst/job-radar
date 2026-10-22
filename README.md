@@ -1,12 +1,22 @@
 # Job Radar
 
-Every open US job on 77,887 company career boards, pulled straight from each company's ATS (Workday, Greenhouse, ADP, Lever, …) and refreshed daily. Search by title, company or city, and filter by state, ATS, remote and posting date. Every result links to the employer's own apply page.
+Open US jobs from about 78,000 company career boards, pulled straight from each company's ATS (Workday, Greenhouse, ADP, Lever, …) and refreshed daily. Jobs are kept for 35 days. Search by title, company or city, and filter by state, ATS, remote and posting date. Every result links to the employer's own apply page.
 
 It runs entirely on free GitHub infrastructure, with no server and no database to host:
 
-- **GitHub Actions** refreshes the boards daily across 20 parallel runners: an incremental run (about 12 minutes end to end) six days a week, and a full sweep on Sundays.
+- **GitHub Actions** refreshes the boards daily across 40 shards: an incremental run (about 25 minutes end to end) every day, and a full sweep on Sundays.
 - The results are built into one **SQLite** database with full-text search, split into 25 MB chunks.
 - **GitHub Pages** serves the chunks. The browser queries the database in place with HTTP range requests ([sql.js-httpvfs](https://github.com/phiresky/sql.js-httpvfs)), so it downloads only the pages a query touches. Measured on a 1.5M-job, 439 MB build: about 20 KB to show the first 40 jobs, and about 8 MB over a full session of searching.
+
+## Current pipeline
+
+- **Shards:** `scrape.yml` splits the boards across 40 shards, 20 running at a time. A full sweep gives each wave 25 minutes; an incremental run gives 12. Boards not reached keep last run's jobs.
+- **Descriptions:** nine ATS types need a per-job lookup (`scraper/details.py`). Shards fetch them within a time budget (12 minutes per full sweep, 8 incremental) and reuse text from earlier runs.
+- **Pay:** taken from the job list when it has pay, otherwise read from the description (`scraper/pay.py`). Only explicit amounts count.
+- **Build:** `scraper/build_db.py` merges the shards with the saved state, keeps descriptions on disk rather than in memory, and writes the chunked SQLite database. Stage logs with peak memory go to the step log.
+- **Publish:** Pages serves the site. The same build is also uploaded to Cloudflare R2 (`scripts/publish_r2.py`), which is staged for when `vercel.json` points at it.
+- **Admin:** signed-in admins can start a sweep and see live progress from the Admin tab. This needs `GITHUB_TOKEN` set in Vercel.
+- **Build runner:** the build job is pinned to `ubuntu-22.04` while the cause of the earlier cancellations is being confirmed.
 
 ## Setup (once)
 
