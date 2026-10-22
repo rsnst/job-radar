@@ -332,12 +332,20 @@ async function descriptionFor(id) {
   return body;
 }
 
+// Fallback for ATSs whose list has no description: ask the site's own function for the posting's text.
+async function liveDescription(url) {
+  const r = await fetch(`/api/detail?url=${encodeURIComponent(url)}`);
+  if (!r.ok) return "";
+  return (await r.json()).html || "";
+}
+
 async function renderDescription(j) {
   const token = ++detailToken;
   const box = $("#sheet-desc");
   box.innerHTML = '<p class="note">Loading description…</p>';
   try {
-    const html = await descriptionFor(j.id);
+    let html = await descriptionFor(j.id);
+    if (!html && j.url) html = await liveDescription(j.url).catch(() => "");
     if (token !== detailToken) return;
     box.innerHTML = html
       ? `<h3>About the role</h3><div class="jd-body">${cleanHtml(html)}</div>`

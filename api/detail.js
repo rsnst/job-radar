@@ -1,0 +1,60 @@
+// On-demand job descriptions for ATSs whose job list has no description.
+//   GET /api/detail?url=<the job's apply URL>  ->  { html }   (html is "" when there is none)
+// Only the hosts listed in ROUTES are accepted, so this can't be used as a general proxy.
+// Results are cached at the CDN for a day.
+
+const TIMEOUT_MS = 8000;
+
+async function getJson(url) {
+  const r = await fetch(url, {
+    headers: { accept: "application/json", "user-agent": "job-radar/1.0" },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ats.rippling.com/{slug}/jobs/{uuid}
+async function rippling(u) {
+  const [slug, , uuid] = u.pathname.split("/").filter(Boolean);
+  if (!slug || !uuid) return "";
+  const d = await getJson(
+    `https://api.rippling.com/platform/api/ats/v1/board/${encodeURIComponent(slug)}/jobs/${encodeURIComponent(uuid)}`);
+  const desc = d.description || {};
+  return [desc.company, desc.role].filter((x) => typeof x === "string" && x).join("");
+}
+
+// {tenant}.wdN.myworkdayjobs.com/[locale/]{site}{externalPath}
+async function workday(u) {
+  const parts = u.pathname.split("/").filter(Boolean);
+  if (parts[0] && /^[a-z]{2}-[A-Z]{2}$/.test(parts[0])) parts.shift();
+  const [site, ...rest] = parts;
+  if (!site || !rest.length) return "";
+  const tenant = u.hostname.split(".")[0];
+  const d = await getJson(`https://${u.hostname}/wday/cxs/${tenant}/${site}/${rest.join("/")}`);
+  return (d.jobPostingInfo && d.jobPostingInfo.jobDescription) || "";
+}
+
+const ROUTES = [
+  { match: (h) => h === "ats.rippling.com", fetch: rippling },
+  { match: (h) => h.endsWith(".myworkdayjobs.com"), fetch: workday },
+];
+
+export default async function handler(req, res) {
+  let u;
+  try {
+    u = new URL(String(req.query?.url || ""));
+  } catch {
+    return res.status(400).json({ error: "bad url" });
+  }
+  if (u.protocol !== "https:") return res.status(400).json({ error: "bad url" });
+  const route = ROUTES.find((r) => r.match(u.hostname));
+  if (!route) return res.status(404).json({ error: "not supported" });
+  try {
+    const html = await route.fetch(u);
+    res.setHeader("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=604800");
+    return res.status(200).json({ html });
+  } catch {
+    return res.status(502).json({ error: "unavailable" });
+  }
+}
