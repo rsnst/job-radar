@@ -15,6 +15,8 @@ function readHash() {
   return { tab: p.get("tab") || "jobs", ...Object.fromEntries(JOB_KEYS.map((k) => [k, p.get(k) || ""])) };
 }
 function writeHash(s) {
+  // A sign-in link returns its token in the hash. Keep it until Supabase has read it.
+  if (/(^|[#&])(access_token|error|error_code)=/.test(location.hash)) return;
   const p = new URLSearchParams();
   if (s.tab && s.tab !== "jobs") p.set("tab", s.tab);
   for (const k of JOB_KEYS) if (s[k]) p.set(k, s[k]);
