@@ -240,6 +240,11 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                 break
         cutoffs[str(n)] = k
     states = Counter(r[5] for r in rows if r[5])
+    # duplicate check: same apply link twice, or same company + title + place under different links
+    urls = Counter(r[10] for r in rows)
+    same_url = sum(n - 1 for n in urls.values() if n > 1)
+    keyed = Counter((r[1].strip().lower(), r[3].strip().lower(), (r[4] or "").strip().lower()) for r in rows)
+    same_role = sum(n - 1 for n in keyed.values() if n > 1)
     meta = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "today": td, "version": version, "db_bytes": size,
@@ -256,6 +261,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
         "states": [s for s, _ in states.most_common()],
         "cutoffs": cutoffs,
         "show_days": SHOW_DAYS,
+        "duplicates": {"same_url": same_url, "same_company_title_place": same_role},
         "run": run,
     }
     (site / "meta.json").write_text(json.dumps(meta, indent=1))

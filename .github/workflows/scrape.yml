@@ -142,6 +142,8 @@ jobs:
                 f"slowest shard {r['fetch_seconds'] / 60:.1f} min · {r['throttled']:,} rate-limited\n")
           print("| outcome | boards |\n|---|---|")
           for k, v in sorted(r["outcome"].items(), key=lambda kv: -kv[1]): print(f"| {k} | {v:,} |")
+          d = m.get("duplicates", {})
+          print(f"\nDuplicates: {d.get('same_url', 0):,} same apply link · {d.get('same_company_title_place', 0):,} same company+title+place\n")
           print("\n| ATS | boards | ok | failed | not indexed | jobs |\n|---|---|---|---|---|---|")
           for a, v in m["by_ats"].items():
               print(f"| {a} | {v['boards']:,} | {v['ok']:,} | {v['error']:,} | {v['unsupported']:,} | {v['jobs']:,} |")
