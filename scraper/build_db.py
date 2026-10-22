@@ -58,6 +58,11 @@ INSERT INTO boards_fts(boards_fts) VALUES('optimize');
 """
 
 
+def description_bytes(html: str) -> bytes:
+    """UTF-8 for a description. Lone surrogates (from some JSON APIs) can't be encoded; replace them."""
+    return html.encode("utf-8", "replace")
+
+
 def day_of(s: str | None) -> int | None:
     if not s:
         return None
@@ -207,7 +212,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [r[:12] for r in rows])
     # rowids are 1..n in insertion order, so a job's id is its position in `rows`
     con.executemany("INSERT INTO job_details(job_id, body) VALUES (?, ?)",
-                    ((i, zlib.compress(r[12].encode("utf-8"), 9))
+                    ((i, zlib.compress(description_bytes(r[12]), 9))
                      for i, r in enumerate(rows, start=1) if r[12]))
     con.commit()
     con.executescript(INDEXES)

@@ -28,3 +28,8 @@ def test_numbers_without_unit_are_ignored():
 
 def test_implausible_values_are_ignored():
     assert pay_from_text("Budget $3 - $4 per year") == ""
+
+
+def test_description_with_lone_surrogate_still_encodes():
+    from scraper.build_db import description_bytes
+    assert description_bytes("<p>Pay \ud83d</p>").decode("utf-8") == "<p>Pay ?</p>"
