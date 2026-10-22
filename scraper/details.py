@@ -11,6 +11,7 @@ import re
 from urllib.parse import quote, urlsplit
 
 from .http import FetchError
+from .pay import salary_from_jsonld
 
 # Board types (as named in scraper/adapters.py and meta.by_ats) that get a per-job lookup.
 DETAIL_ATS = {"Rippling", "Workday", "SmartRecruiters", "BambooHR", "Workable", "Pinpoint",
@@ -113,7 +114,10 @@ async def _jobposting_from_page(c, url):
             t = node.get("@type")
             if "JobPosting" in (t if isinstance(t, list) else [t]) and isinstance(node.get("description"), str):
                 # the app adds its own "About the role" heading, so drop a leading "Description" heading
-                return _LEAD_HEADING.sub("", node["description"], count=1)
+                body = _LEAD_HEADING.sub("", node["description"], count=1)
+                # structured salary is not always written into the text; put it first so pay_from_text sees it
+                pay = salary_from_jsonld(node)
+                return (f"<p>Pay: {pay}</p>" + body) if pay else body
     return ""
 
 

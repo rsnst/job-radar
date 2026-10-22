@@ -59,3 +59,25 @@ def pay_from_text(body: str | None) -> str:
         if unit and _plausible(v, v, unit):
             return f"{_fmt(v)} / {unit}"
     return ""
+
+
+def salary_from_jsonld(node: dict) -> str:
+    """Pay from a schema.org JobPosting's baseSalary, e.g. min/max with unitText YEAR or HOUR."""
+    base = node.get("baseSalary")
+    if not isinstance(base, dict):
+        return ""
+    val = base.get("value") if isinstance(base.get("value"), dict) else base
+    unit_raw = str(val.get("unitText") or base.get("unitText") or "").upper()
+    unit = {"YEAR": "year", "HOUR": "hour"}.get(unit_raw)
+    if not unit:
+        return ""
+    try:
+        lo = float(val.get("minValue") or val.get("value") or 0)
+        hi = float(val.get("maxValue") or lo)
+    except (TypeError, ValueError):
+        return ""
+    if lo <= 0 or lo > hi or not _plausible(lo, hi, unit):
+        return ""
+    if lo == hi:
+        return f"{_fmt(lo)} / {unit}"
+    return f"{_fmt(lo)} – {_fmt(hi)} / {unit}"

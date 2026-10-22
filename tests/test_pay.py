@@ -33,3 +33,24 @@ def test_implausible_values_are_ignored():
 def test_description_with_lone_surrogate_still_encodes():
     from scraper.build_db import description_bytes
     assert description_bytes("<p>Pay \ud83d</p>").decode("utf-8") == "<p>Pay ?</p>"
+
+
+def test_jsonld_salary_range_per_year():
+    from scraper.pay import salary_from_jsonld
+    node = {"baseSalary": {"@type": "MonetaryAmount", "currency": "USD",
+                           "value": {"@type": "QuantitativeValue", "minValue": 90000,
+                                     "maxValue": 120000, "unitText": "YEAR"}}}
+    assert salary_from_jsonld(node) == "$90,000 – $120,000 / year"
+
+
+def test_jsonld_hourly_single_value():
+    from scraper.pay import salary_from_jsonld
+    node = {"baseSalary": {"value": {"value": 28, "unitText": "HOUR"}}}
+    assert salary_from_jsonld(node) == "$28 / hour"
+
+
+def test_jsonld_missing_or_implausible_is_empty():
+    from scraper.pay import salary_from_jsonld
+    assert salary_from_jsonld({}) == ""
+    assert salary_from_jsonld({"baseSalary": {"value": {"minValue": 5, "maxValue": 9, "unitText": "YEAR"}}}) == ""
+    assert salary_from_jsonld({"baseSalary": {"value": {"minValue": 90000, "unitText": "MONTH"}}}) == ""
