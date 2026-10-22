@@ -100,6 +100,20 @@ async function paylocity(u) {
   return jobPostingFromPage(u.href);
 }
 
+// {host}/hcmUI/CandidateExperience/en/sites/{site}/job/{id}
+async function oracle(u) {
+  const parts = u.pathname.split("/").filter(Boolean);
+  const site = parts[parts.indexOf("sites") + 1];
+  const id = parts[parts.indexOf("job") + 1];
+  if (!site || !id) return "";
+  const d = await getJson(
+    `https://${u.hostname}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?onlyData=true` +
+    `&finder=ById;Id="${encodeURIComponent(id)}",siteNumber=${encodeURIComponent(site)}`);
+  const item = (d.items && d.items[0]) || {};
+  return [item.ExternalDescriptionStr, item.ExternalQualificationsStr, item.ExternalResponsibilitiesStr]
+    .filter((x) => typeof x === "string" && x).join("");
+}
+
 const ROUTES = [
   { match: (h) => h === "ats.rippling.com", fetch: rippling },
   { match: (h) => h.endsWith(".myworkdayjobs.com"), fetch: workday },
@@ -109,6 +123,7 @@ const ROUTES = [
   { match: (h) => h.endsWith(".pinpointhq.com"), fetch: pinpoint },
   { match: (h) => h === "recruiting.paylocity.com", fetch: paylocity },
   { match: (h) => h === "jobs.jobvite.com", fetch: jobPostingFromPage },
+  { match: (h) => h.endsWith(".oraclecloud.com"), fetch: oracle },
 ];
 
 export default async function handler(req, res) {
