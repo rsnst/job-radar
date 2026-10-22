@@ -90,20 +90,39 @@ function refreshSaveButtons() {
   }
 }
 
+// A calm warm monogram per company, so every card has a stable visual anchor
+function monogram(name) {
+  let h = 0;
+  for (const ch of String(name || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const letters = String(name || "?").replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).slice(0, 2)
+    .map((w) => w[0] || "").join("").toUpperCase() || "?";
+  return { letters, hue: 14 + (h % 36) }; // warm range: rust → amber
+}
+
 function jobCard(j) {
   jobById.set(j.id, j); // the details panel and save buttons look jobs up by id
   const isNew = j.seen >= newSince;
+  const m = monogram(j.company);
   return `<li class="card">
-    <p class="t"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></p>
-    <div class="co"><button type="button" data-board="${j.board}" data-name="${esc(j.company)}">${esc(j.company)}</button></div>
+    <div class="card-head">
+      <span class="mono" style="--h:${m.hue}" aria-hidden="true">${esc(m.letters)}</span>
+      <div class="card-title">
+        <p class="t"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></p>
+        <div class="co"><button type="button" data-board="${j.board}" data-name="${esc(j.company)}">${esc(j.company)}</button></div>
+      </div>
+    </div>
     <div class="meta">
-      ${isNew ? '<span class="badge new">NEW</span>' : ""}
-      ${j.remote ? '<span class="badge remote">REMOTE</span>' : ""}
-      <span>${esc(j.loc || "Location not listed")}</span>
-      ${j.us ? "" : '<span class="badge unk" title="Location didn\'t say which country">LOC?</span>'}
+      <span class="place">${esc(j.loc || "Location not listed")}</span>
       <span>${esc(j.ats)}</span>
       <span>${ago(j.posted)}</span>
+    </div>
+    <div class="tags">
+      ${isNew ? '<span class="badge new">New</span>' : ""}
+      ${j.remote ? '<span class="badge remote">Remote</span>' : ""}
+      ${j.us ? "" : '<span class="badge unk" title="Location didn\'t say which country">Check location</span>'}
       ${j.pay ? `<span class="badge pay" title="Pay listed in the posting">${esc(j.pay)}</span>` : ""}
+    </div>
+    <div class="card-foot">
       <button type="button" class="details" data-detail="${j.id}">Details</button>
       ${account.enabled ? saveButton(j) : ""}
     </div>

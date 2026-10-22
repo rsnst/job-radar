@@ -282,3 +282,90 @@ dialog.signin input { font: inherit; padding: .6rem .7rem; border: 1px solid var
 #tab-admin th, #tab-admin td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line); }
 #tab-admin th { color: var(--muted); font-weight: 500; }
 #tab-admin td:not(:first-child), #tab-admin th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- Job Compass: warm theme, job cards in a grid ---------- */
+:root {
+  --bg: #f6efe4;            /* warm linen */
+  --surface: #fffaf2;
+  --ink: #2b1f15;          /* espresso ink */
+  --muted: #7d6a5a;
+  --line: #e8dccb;
+  --line-strong: #d3c1a8;
+  --accent: #a4472a;       /* brick */
+  --accent-hover: #87371f;
+  --accent-ink: #8e3b22;
+  --accent-soft: #f6e4d7;
+  --focus: rgba(164, 71, 42, .28);
+  --ok: #4f6b3a; --ok-soft: #e9efdd;
+  --warn: #8a5a14; --warn-soft: #f6e9cf;
+  --shadow: 0 1px 0 rgba(43, 31, 21, .04), 0 6px 18px -14px rgba(43, 31, 21, .3);
+  --display: "Fraunces", Georgia, "Times New Roman", serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1f1812; --surface: #2a2118; --ink: #f2e7d6; --muted: #b3a08b;
+    --line: #3d3024; --line-strong: #54443a;
+    --accent: #e39a72; --accent-hover: #f0b08c; --accent-ink: #efb08d;
+    --accent-soft: #3a2a1f; --focus: rgba(227, 154, 114, .3);
+    --ok: #a9c48a; --ok-soft: #26301d; --warn: #e8c07a; --warn-soft: #2f2716;
+    --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1f1812; --surface: #2a2118; --ink: #f2e7d6; --muted: #b3a08b;
+  --line: #3d3024; --line-strong: #54443a;
+  --accent: #e39a72; --accent-hover: #f0b08c; --accent-ink: #efb08d;
+  --accent-soft: #3a2a1f; --focus: rgba(227, 154, 114, .3);
+  --ok: #a9c48a; --ok-soft: #26301d; --warn: #e8c07a; --warn-soft: #2f2716;
+  --shadow: none; color-scheme: dark;
+}
+body { background: var(--bg); }
+
+.list {
+  list-style: none; margin: 16px 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px;
+}
+.list > .empty, .list > .skeleton { grid-column: 1 / -1; }
+.card {
+  display: flex; flex-direction: column; gap: 12px; position: relative;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  padding: 18px; box-shadow: var(--shadow);
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.card:hover {
+  background: var(--surface); transform: translateY(-2px); border-color: var(--line-strong);
+  box-shadow: 0 12px 24px -16px rgba(43, 31, 21, .4);
+}
+.card-head { display: flex; gap: 12px; align-items: flex-start; }
+.card-title { min-width: 0; }
+.mono {
+  flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  font: 600 .95rem/1 var(--display); color: hsl(var(--h) 55% 30%); background: hsl(var(--h) 75% 91%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .mono { color: hsl(var(--h) 85% 82%); background: hsl(var(--h) 35% 22%); }
+}
+:root[data-theme="dark"] .mono { color: hsl(var(--h) 85% 82%); background: hsl(var(--h) 35% 22%); }
+.card .t { font: 600 1.08rem/1.25 var(--display); margin: 0 0 3px; text-wrap: balance; }
+.card .t a { color: var(--ink); text-decoration: none; }
+.card .t a:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+.card .co { font-size: .9rem; color: var(--muted); }
+.card .co button { font-weight: 500; color: var(--ink); }
+.meta { margin-top: 0; gap: 2px 12px; font-size: .84rem; color: var(--muted); }
+.meta .place { white-space: normal; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tags:empty { display: none; }
+.badge { font: 600 .72rem var(--f); padding: 3px 9px; border-radius: 999px; }
+.card-foot {
+  margin-top: auto; display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  padding-top: 12px; border-top: 1px solid var(--line);
+}
+.card-foot .details {
+  all: unset; cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--accent);
+  padding: 4px 0; border-radius: 4px;
+}
+.card-foot .details:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }
+.card-foot .details:focus-visible { outline: 3px solid var(--focus); }
+.card .co button:focus-visible, .card .t a:focus-visible { outline: 3px solid var(--focus); border-radius: 4px; }
+.card .t a::after { content: none; }
