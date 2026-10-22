@@ -9,15 +9,18 @@ import argparse
 import glob
 import gzip
 import json
+import os
+import shutil
 import sqlite3
 import sys
+import tempfile
 import zlib
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .run import BOARDS, load_boards
-from .state import day, load_boards_state, load_jobs_state, save_boards_state, save_jobs_state
+from .state import _atomic, day, load_boards_state, save_boards_state
 
 STALE_DAYS = 3  # keep a board's last jobs this long if it errors or isn't reached
 # the published DB only holds jobs posted within this many days (state keeps all of them)
@@ -90,15 +93,73 @@ def _compact(j: dict, f: int) -> dict:
     return out
 
 
-def merge(in_dir: Path, state_dir: Path, today: date, boards_path: Path = BOARDS):
+class DescStore:
+    """Descriptions kept on disk, keyed by apply URL, as zlib-compressed bytes.
+
+    The build never holds every description in memory: each one is moved here as it is read,
+    and read back one row at a time when the database is written.
+    """
+
+    def __init__(self, path: str = ":memory:"):
+        self.con = sqlite3.connect(path)
+        self.con.execute("CREATE TABLE IF NOT EXISTS d (url TEXT PRIMARY KEY, body BLOB)")
+        self._batch: list = []
+
+    def put(self, url: str, html: str):
+        self._batch.append((url, zlib.compress(description_bytes(html), 6)))
+        if len(self._batch) >= 500:
+            self.flush()
+
+    def flush(self):
+        if self._batch:
+            self.con.executemany("INSERT OR REPLACE INTO d VALUES (?, ?)", self._batch)
+            self.con.commit()
+            self._batch = []
+
+    def blob(self, url: str):
+        self.flush()
+        row = self.con.execute("SELECT body FROM d WHERE url = ?", (url,)).fetchone()
+        return row[0] if row else None
+
+    def text(self, url: str):
+        b = self.blob(url)
+        return zlib.decompress(b).decode("utf-8") if b else None
+
+    def close(self):
+        self.flush()
+        self.con.close()
+
+
+def _stream_prev_jobs(state_dir: Path, store: DescStore) -> dict[str, list[dict]]:
+    """Last run's jobs, one line at a time. Descriptions go to the store; the jobs keep no text."""
+    out: dict[str, list[dict]] = {}
+    p = Path(state_dir) / "jobs.jsonl.gz"
+    if not p.exists():
+        return out
+    with gzip.open(p, "rt") as f:
+        for line in f:
+            r = json.loads(line)
+            jobs = []
+            for j in r["jobs"]:
+                x = j.pop("x", None)
+                if x:
+                    store.put(j["url"], x)
+                jobs.append(j)
+            out[r["url"]] = jobs
+    return out
+
+
+def merge(in_dir: Path, state_dir: Path, today: date, boards_path: Path = BOARDS,
+          store: DescStore | None = None):
     """Combine this run's shard output with last run's state.
 
     Returns (boards, jobs_by_url, new_board_state, run_info), where each board dict
     gains "status" and jobs are in state format.
     """
     td = day(today)
+    store = store if store is not None else DescStore()
     prev_b = load_boards_state(state_dir)
-    prev_j = load_jobs_state(state_dir)
+    prev_j = _stream_prev_jobs(state_dir, store)
     first = {j["k"]: j["f"] for jobs in prev_j.values() for j in jobs}
 
     stats: dict[int, dict] = {}
@@ -111,7 +172,11 @@ def merge(in_dir: Path, state_dir: Path, today: date, boards_path: Path = BOARDS
         with gzip.open(p, "rt") as f:
             for line in f:
                 j = json.loads(line)
+                x = j.pop("x", None)
+                if x:
+                    store.put(j["url"], x)
                 fresh[j["b"]].append(j)
+    store.flush()
     summaries = [json.loads(Path(p).read_text()) for p in sorted(glob.glob(str(in_dir / "summary-*.json")))]
 
     boards, jobs_by_url, new_state = [], {}, {}
@@ -174,23 +239,47 @@ def merge(in_dir: Path, state_dir: Path, today: date, boards_path: Path = BOARDS
     return boards, jobs_by_url, new_state, run
 
 
+def save_jobs_from_store(state_dir: Path, by_url: dict[str, list[dict]], store: DescStore):
+    """Write the jobs state one board at a time, putting each description back from the store."""
+    p = Path(state_dir) / "jobs.jsonl.gz"
+    tmp = _atomic(p)
+    with gzip.open(tmp, "wt", compresslevel=6) as f:
+        for url, jobs in by_url.items():
+            if not jobs:
+                continue
+            out = []
+            for j in jobs:
+                x = store.text(j["url"])
+                out.append({**j, "x": x} if x else j)
+            f.write(json.dumps({"url": url, "jobs": out}, separators=(",", ":")) + "\n")
+    os.replace(tmp, p)
+
+
 def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, boards_path: Path = BOARDS):
     today = today or datetime.now(timezone.utc).date()
     td = day(today)
-    boards, jobs_by_url, new_state, run = merge(in_dir, state_dir, today, boards_path)
+    work = Path(tempfile.mkdtemp(prefix="descs-"))  # not cached, not published
+    store = DescStore(str(work / "descs.sqlite"))
+    try:
+        return _build(in_dir, site, state_dir, today, td, boards_path, store)
+    finally:
+        store.close()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _build(in_dir, site, state_dir, today, td, boards_path, store):
+    boards, jobs_by_url, new_state, run = merge(in_dir, state_dir, today, boards_path, store)
     _log("merged shards and state")
 
-    # Save state first: it needs the full descriptions. After this, each description is moved
-    # out of memory as its row is built (kept compressed), so the build never holds all the text.
     state_dir.mkdir(parents=True, exist_ok=True)
     save_boards_state(state_dir, new_state)
-    save_jobs_state(state_dir, jobs_by_url)
+    save_jobs_from_store(state_dir, jobs_by_url, store)
+    _log("saved state")
 
     rows = []
     per_board = Counter()
     for b in boards:
         for j in jobs_by_url.get(b["board_url"], []):
-            x = j.pop("x", None)
             posted = day_of(j.get("d"))
             if posted is None or posted > td:
                 posted = j["f"]
@@ -198,8 +287,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                 continue
             per_board[b["id"]] += 1
             rows.append((b["id"], b["company"], b["ats"], j["t"], j["l"], j["s"], j["r"], j["u"],
-                         posted, j["f"], j["url"], j.get("p"),
-                         zlib.compress(description_bytes(x), 9) if x else None))
+                         posted, j["f"], j["url"], j.get("p"), store.blob(j["url"])))
     rows.sort(key=lambda r: (-r[8], -r[9], r[1]))
     _log(f"built {len(rows)} rows")
 
