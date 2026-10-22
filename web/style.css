@@ -415,3 +415,6 @@ body { background: var(--bg); }
 .runs-table td, .runs-table th { text-align: left; }
 .runs-table code { font-size: .82rem; }
 button[disabled] { opacity: .55; cursor: not-allowed; }
+
+/* pay on the card: shown under the company, only when the posting lists it */
+.card .pay-line { margin: 6px 0 0; font-size: .92rem; font-weight: 600; color: var(--ok); line-height: 1.3; }

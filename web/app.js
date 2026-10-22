@@ -122,6 +122,7 @@ function jobCard(j) {
       <div class="card-title">
         <p class="t"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></p>
         <div class="co"><button type="button" data-board="${j.board}" data-name="${esc(co)}">${esc(co)}</button></div>
+        ${j.pay ? `<p class="pay-line" title="Pay listed in the posting">${esc(j.pay)}</p>` : ""}
       </div>
       ${account.enabled ? saveButton(j) : ""}
     </div>
@@ -134,7 +135,6 @@ function jobCard(j) {
       ${isNew ? '<span class="badge new">New</span>' : ""}
       ${j.remote ? '<span class="badge remote">Remote</span>' : ""}
       ${j.us ? "" : '<span class="badge unk" title="Location didn\'t say which country">Check location</span>'}
-      ${j.pay ? `<span class="badge pay" title="Pay listed in the posting">${esc(j.pay)}</span>` : ""}
     </div>
     <div class="card-foot">
       <button type="button" class="details" data-detail="${j.id}">Details</button>
