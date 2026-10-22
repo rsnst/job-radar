@@ -144,7 +144,13 @@ jobs:
       - name: Build site
         run: |
           node scripts/vendor.mjs site
-          python -m scraper.build_db --in out --site site --state state | tee build.json
+          du -sh out state
+
+      - name: Build database
+        run: python -u -m scraper.build_db --in out --site site --state state > build.json
+
+      - name: Build summary
+        run: |
           du -sh site state
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json, glob

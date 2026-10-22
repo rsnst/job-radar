@@ -10,6 +10,7 @@ import glob
 import gzip
 import json
 import sqlite3
+import sys
 import zlib
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
@@ -56,6 +57,13 @@ CREATE VIRTUAL TABLE boards_fts USING fts5(company, url, content='boards', conte
 INSERT INTO boards_fts(rowid, company, url) SELECT id, company, url FROM boards;
 INSERT INTO boards_fts(boards_fts) VALUES('optimize');
 """
+
+
+def _log(stage: str):
+    """Progress to stderr with peak memory, so a cancelled build shows how far it got."""
+    import resource
+    mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+    print(f"[build] {stage} (peak {mb} MB)", file=sys.stderr, flush=True)
 
 
 def description_bytes(html: str) -> bytes:
@@ -171,6 +179,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
     today = today or datetime.now(timezone.utc).date()
     td = day(today)
     boards, jobs_by_url, new_state, run = merge(in_dir, state_dir, today, boards_path)
+    _log("merged shards and state")
 
     # Save state first: it needs the full descriptions. After this, each description is moved
     # out of memory as its row is built (kept compressed), so the build never holds all the text.
@@ -193,6 +202,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                          posted, j["f"], j["url"], j.get("p") or pay_from_text(x),
                          zlib.compress(description_bytes(x), 9) if x else None))
     rows.sort(key=lambda r: (-r[8], -r[9], r[1]))
+    _log(f"built {len(rows)} rows")
 
     by_ats = defaultdict(lambda: {"boards": 0, "ok": 0, "error": 0, "unsupported": 0, "jobs": 0})
     board_rows = []
@@ -214,6 +224,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
     con = sqlite3.connect(tmp)
     con.executescript(SCHEMA)
 
+    _log("writing database")
     con.executemany("INSERT INTO boards VALUES (?,?,?,?,?,?,?)", board_rows)
     con.executemany("INSERT INTO jobs(board,company,ats,title,loc,state,remote,us,posted,seen,url,pay) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [r[:12] for r in rows])
@@ -221,12 +232,14 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
     con.executemany("INSERT INTO job_details(job_id, body) VALUES (?, ?)",
                     ((i, r[12]) for i, r in enumerate(rows, start=1) if r[12]))
     con.commit()
+    _log("indexing")
     con.executescript(INDEXES)
     con.execute("ANALYZE")
     con.commit()
     con.execute("VACUUM")
     con.close()
 
+    _log("splitting into chunks")
     # split into fixed-size chunks for static hosting
     for old in site_db.glob("db.sqlite3.*"):
         old.unlink()
@@ -277,6 +290,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
         "run": run,
     }
     (site / "meta.json").write_text(json.dumps(meta, indent=1))
+    _log("done")
     tmp.unlink()
     return meta
 
