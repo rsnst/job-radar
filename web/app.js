@@ -1,4 +1,4 @@
-import { jobsQuery, boardsQuery, PAGE } from "./query.js";
+import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
 import { account, initAccount, toggleSave, signIn, signOut, listSaved } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
@@ -91,6 +91,7 @@ function refreshSaveButtons() {
 }
 
 function jobCard(j) {
+  jobById.set(j.id, j); // the details panel and save buttons look jobs up by id
   const isNew = j.seen >= newSince;
   return `<li class="card">
     <p class="t"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></p>
@@ -102,6 +103,7 @@ function jobCard(j) {
       ${j.us ? "" : '<span class="badge unk" title="Location didn\'t say which country">LOC?</span>'}
       <span>${esc(j.ats)}</span>
       <span>${ago(j.posted)}</span>
+      ${j.pay ? `<span class="badge pay" title="Pay listed in the posting">${esc(j.pay)}</span>` : ""}
       <button type="button" class="details" data-detail="${j.id}">Details</button>
       ${account.enabled ? saveButton(j) : ""}
     </div>
@@ -249,7 +251,65 @@ function showTab(tab) {
 }
 
 // ---------- job details panel
-let sheetJob = null, sheetReturn = null;
+let sheetJob = null, sheetReturn = null, detailToken = 0;
+const detailCache = new Map(); // job id -> description HTML ("" when the posting has none)
+
+// Inflate a zlib-compressed BLOB from job_details into HTML text.
+async function inflate(bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Response(stream).text();
+}
+
+// Keep only harmless formatting tags. Everything else is dropped or unwrapped; links must be http(s).
+const KEEP = new Set(["P", "BR", "UL", "OL", "LI", "STRONG", "B", "EM", "I", "H1", "H2", "H3", "H4", "H5", "H6", "A", "DIV", "SPAN"]);
+const DROP = new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "IMG", "SVG", "FORM", "INPUT", "BUTTON", "TEXTAREA", "SELECT", "LINK", "META"]);
+function cleanHtml(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html"); // inert: scripts and images don't run or load
+  const walk = (node) => {
+    for (const el of [...node.childNodes]) {
+      if (el.nodeType !== 1) continue;
+      if (DROP.has(el.tagName)) { el.remove(); continue; }
+      walk(el);
+      if (!KEEP.has(el.tagName)) {
+        while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+        el.remove();
+        continue;
+      }
+      for (const a of [...el.attributes]) if (!(el.tagName === "A" && a.name === "href")) el.removeAttribute(a.name);
+      if (el.tagName === "A") {
+        if (/^https?:\/\//i.test(el.getAttribute("href") || "")) { el.setAttribute("target", "_blank"); el.setAttribute("rel", "noopener nofollow"); }
+        else el.removeAttribute("href");
+      }
+    }
+  };
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+
+async function descriptionFor(id) {
+  if (detailCache.has(id)) return detailCache.get(id);
+  const rows = await query(detailQuery(id));
+  const body = rows.length && rows[0].body ? await inflate(rows[0].body) : "";
+  detailCache.set(id, body);
+  return body;
+}
+
+async function renderDescription(j) {
+  const token = ++detailToken;
+  const box = $("#sheet-desc");
+  box.innerHTML = '<p class="note">Loading description…</p>';
+  try {
+    const html = await descriptionFor(j.id);
+    if (token !== detailToken) return;
+    box.innerHTML = html
+      ? `<h3>About the role</h3><div class="jd-body">${cleanHtml(html)}</div>`
+      : '<p class="note">This posting has no description on the employer’s job board. Use Apply to read the full posting.</p>';
+  } catch {
+    if (token === detailToken) box.innerHTML = '<p class="note">Couldn’t load the description. Use Apply to read the full posting.</p>';
+  }
+}
+
 function fmtDay(d) { return new Date(d * 86400000).toISOString().slice(0, 10); }
 function openSheet(j) {
   if (!j) return;
@@ -261,17 +321,20 @@ function openSheet(j) {
     ["Location", j.loc || "Not listed"],
     ["Remote", j.remote ? "Yes" : "No"],
     ["State", j.state || "Not listed"],
+    ["Pay", j.pay || "Not listed"],
     ["Source", j.ats],
     ["Posted", j.posted != null ? `${fmtDay(j.posted)} (${ago(j.posted)})` : "Not listed"],
   ].map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("");
   $("#sheet-apply").href = j.url;
   $("#sheet").hidden = false;
   updateSheetSave();
+  renderDescription(j);
   $("#sheet-close").focus();
 }
 function closeSheet() {
   $("#sheet").hidden = true;
   sheetJob = null;
+  detailToken++;
   if (sheetReturn && sheetReturn.focus) sheetReturn.focus();
 }
 function updateSheetSave() {

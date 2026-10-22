@@ -11,9 +11,11 @@ from scraper.run import normalize, norm_date
 from datetime import date
 
 ROUTES = {
-    "https://boards-api.greenhouse.io/v1/boards/acme/jobs": {"jobs": [
+    "https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true": {"jobs": [
         {"id": 1, "title": "Software Engineer", "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/1",
-         "location": {"name": "Austin, TX"}, "first_published": "2026-10-01T10:00:00-04:00"},
+         "location": {"name": "Austin, TX"}, "first_published": "2026-10-01T10:00:00-04:00",
+         "content": "&lt;p&gt;Build .NET services.&lt;/p&gt;",
+         "pay_input_ranges": [{"min_cents": 12000000, "max_cents": 15000000, "currency_type": "USD", "title": "Base"}]},
         {"id": 2, "title": "SWE London", "absolute_url": "https://x/2", "location": {"name": "London, UK"},
          "updated_at": "2026-09-01T00:00:00Z"}]},
     "https://api.lever.co/v0/postings/acme?mode=json": [
@@ -155,3 +157,23 @@ def test_norm_date():
     assert norm_date("2026-09-29T00:00:00", t) == "2026-09-29"
     assert norm_date("9/5/2026", t) == "2026-09-05"
     assert norm_date(None, t) is None
+
+
+def test_detail_fields_flow_through_normalize():
+    from scraper.run import normalize
+    board = {"id": 1, "company": "Acme", "ats": "Greenhouse", "us_share_pct": ""}
+    raw = {"key": "gh:acme:1", "title": "Engineer", "loc": "Austin, TX", "url": "https://x/1",
+           "posted": "2026-10-01", "desc": "<p>Build .NET services.</p>", "pay": "$120,000 – $150,000"}
+    job = normalize(board, raw)
+    assert job["x"] == "<p>Build .NET services.</p>"
+    assert job["p"] == "$120,000 – $150,000"
+    bare = normalize(board, {**raw, "desc": None, "pay": None})
+    assert "x" not in bare and "p" not in bare
+
+
+def test_money_range_and_html_unescape():
+    from scraper.adapters import _html, _money_range
+    assert _money_range(120000, 150000, "USD", "year") == "$120,000 – $150,000 / year"
+    assert _money_range(None, None, "USD") is None
+    assert _html("&lt;p&gt;hi&lt;/p&gt;") == "<p>hi</p>"
+    assert _html("<p>already</p>") == "<p>already</p>"

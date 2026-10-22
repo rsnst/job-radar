@@ -39,10 +39,15 @@ export function jobsQuery(f, meta) {
   if (f.newSince != null) { where.push("j.seen >= ?"); params.push(f.newSince); }
   if (f.afterId) { where.push(`${idCol} > ?`); params.push(f.afterId); }
   const sql =
-    `SELECT j.id, j.title, j.company, j.ats, j.loc, j.state, j.remote, j.us, j.posted, j.seen, j.url, j.board ` +
+    `SELECT j.id, j.title, j.company, j.ats, j.loc, j.state, j.remote, j.us, j.posted, j.seen, j.url, j.board, j.pay ` +
     `FROM ${from}` + (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
     ` ORDER BY ${idCol} LIMIT ${PAGE}`;
   return { sql, params };
+}
+
+// The description for one job (zlib-compressed HTML; inflated in the app). Separate table, read only on demand.
+export function detailQuery(id) {
+  return { sql: "SELECT body FROM job_details WHERE job_id = ?", params: [Number(id)] };
 }
 
 // f = { q, ats, hasJobs, offset }

@@ -80,11 +80,17 @@ def normalize(board: dict, raw: dict, today: date = TODAY) -> dict | None:
     if us == "unk" and (board.get("us_share_pct") or "") == "100":
         us = "us"
     remote = is_remote(raw.get("remote") is True, loc, title)
-    return {
+    job = {
         "k": raw["key"], "b": board["id"], "t": title[:200], "c": board["company"], "a": board["ats"],
         "l": (loc or ("Remote" if remote else ""))[:160], "s": state, "r": int(remote),
         "u": int(us == "us"), "d": norm_date(raw.get("posted"), today), "url": raw["url"],
     }
+    # optional detail: full description HTML ("x") and pay text ("p"), when the ATS list gives them
+    if raw.get("desc"):
+        job["x"] = raw["desc"]
+    if raw.get("pay"):
+        job["p"] = str(raw["pay"])[:200]
+    return job
 
 
 def plan(board: dict, prev: dict | None, mode: str, today: date) -> tuple[str, dict | None]:

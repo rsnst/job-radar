@@ -7,6 +7,7 @@ Fetchers raise FetchError (or Unsupported) on failure.
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -18,6 +19,38 @@ from .http import Client, FetchError
 
 class Unsupported(Exception):
     pass
+
+
+MAX_DESC = 300_000  # chars; a sanity cap, not a display limit
+
+
+def _html(s):
+    """Description HTML from an ATS field. Some APIs entity-escape their HTML; undo that once."""
+    if not s or not isinstance(s, str):
+        return None
+    if "&lt;" in s and "<" not in s:
+        s = html.unescape(s)
+    return s[:MAX_DESC]
+
+
+def _plain_html(s):
+    if not s or not isinstance(s, str):
+        return None
+    return "<p>" + html.escape(s).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+
+
+_SYM = {"USD": "$", "CAD": "CA$", "GBP": "£", "EUR": "€"}
+
+
+def _money_range(lo, hi, cur, unit=""):
+    """Format a pay range like '$120,000 – $150,000 / year'. None when no numbers were given."""
+    if lo in (None, "") and hi in (None, ""):
+        return None
+    sym = _SYM.get((cur or "USD").upper(), (cur or "") + " ")
+    def f(v):
+        return f"{sym}{float(v):,.0f}"
+    txt = f(lo) if hi in (None, "") else (f(hi) if lo in (None, "") else f"{f(lo)} – {f(hi)}")
+    return txt + (f" / {unit}" if unit else "")
 
 
 class Jobs(list):
@@ -76,14 +109,18 @@ async def greenhouse(c: Client, url: str):
         raise Unsupported("custom Greenhouse domain")
     token = path[0]
     api = "boards-api.eu.greenhouse.io" if ".eu." in host else "boards-api.greenhouse.io"
-    d = await c.get_json(f"https://{api}/v1/boards/{token}/jobs")
+    d = await c.get_json(f"https://{api}/v1/boards/{token}/jobs?content=true")
     out = []
     for j in d.get("jobs", []):
+        pays = [_money_range((r.get("min_cents") or 0) / 100 or None, (r.get("max_cents") or 0) / 100 or None,
+                             r.get("currency_type"))
+                for r in (j.get("pay_input_ranges") or [])]
         out.append(dict(
             key=f"gh:{token}:{j['id']}", title=j.get("title"),
             loc=(j.get("location") or {}).get("name"),
             posted=j.get("first_published") or j.get("updated_at"),
-            url=j.get("absolute_url")))
+            url=j.get("absolute_url"),
+            desc=_html(j.get("content")), pay=" | ".join(p for p in pays if p) or None))
     return out
 
 
@@ -96,7 +133,7 @@ async def gem(c: Client, url: str):
                  loc=(j.get("location") or {}).get("name") if isinstance(j.get("location"), dict) else j.get("location"),
                  remote=j.get("location_type") == "remote",
                  posted=j.get("first_published_at") or j.get("updated_at"),
-                 url=j.get("absolute_url")) for j in jobs]
+                 url=j.get("absolute_url"), desc=_html(j.get("content"))) for j in jobs]
 
 
 async def lever(c: Client, url: str):
@@ -110,11 +147,20 @@ async def lever(c: Client, url: str):
     for j in d if isinstance(d, list) else []:
         cat = j.get("categories") or {}
         locs = cat.get("allLocations") or [cat.get("location")]
+        # Lever splits a posting into an intro, titled sections, and an additional block
+        parts = [_html(j.get("description")) or _plain_html(j.get("descriptionPlain"))]
+        for sec in j.get("lists") or []:
+            parts.append(f"<h3>{html.escape(sec.get('text') or '')}</h3>{_html(sec.get('content')) or ''}")
+        parts.append(_html(j.get("additional")) or _plain_html(j.get("additionalPlain")))
+        sr = j.get("salaryRange") or {}
+        pay = j.get("salaryDescription") or _money_range(sr.get("min"), sr.get("max"), sr.get("currency"),
+                                                         sr.get("interval") or "")
         out.append(dict(
             key=f"lever:{site}:{j['id']}", title=j.get("text"),
             loc=" | ".join(x for x in locs if x), country=j.get("country"),
             remote=j.get("workplaceType") == "remote", posted=j.get("createdAt"),
-            url=j.get("hostedUrl"), dept=cat.get("team")))
+            url=j.get("hostedUrl"), dept=cat.get("team"),
+            desc="".join(p for p in parts if p) or None, pay=pay or None))
     return out
 
 
@@ -134,7 +180,9 @@ async def ashby(c: Client, url: str):
             key=f"ashby:{name}:{j['id']}", title=j.get("title"),
             loc=" | ".join(x for x in locs if x), country=addr.get("addressCountry"),
             remote=j.get("isRemote") or j.get("workplaceType") == "Remote",
-            posted=j.get("publishedAt"), url=j.get("jobUrl"), dept=j.get("department")))
+            posted=j.get("publishedAt"), url=j.get("jobUrl"), dept=j.get("department"),
+            desc=_html(j.get("descriptionHtml")) or _plain_html(j.get("descriptionPlain")),
+            pay=(j.get("compensation") or {}).get("compensationTierSummary") or None))
     return out
 
 
@@ -199,7 +247,11 @@ async def recruitee(c: Client, url: str):
     return [dict(key=f"rt:{sub}:{j['id']}", title=j.get("title"),
                  loc=j.get("location") or ", ".join(x for x in [j.get("city"), j.get("state_code")] if x),
                  country=j.get("country_code"), remote=j.get("remote"),
-                 posted=j.get("published_at"), url=j.get("careers_url"), dept=j.get("department"))
+                 posted=j.get("published_at"), url=j.get("careers_url"), dept=j.get("department"),
+                 desc="".join(x for x in [_html(j.get("description")), _html(j.get("requirements"))] if x) or None,
+                 pay=_money_range((j.get("salary") or {}).get("min"), (j.get("salary") or {}).get("max"),
+                                  (j.get("salary") or {}).get("currency"), (j.get("salary") or {}).get("period") or "")
+                 if j.get("salary") else None)
             for j in d.get("offers", [])]
 
 
@@ -230,7 +282,7 @@ async def breezy(c: Client, url: str):
             key=f"bz:{sub}:{j['id']}", title=j.get("name"), loc=l.get("name"),
             country=country.get("id") if isinstance(country, dict) else country,
             remote=l.get("is_remote"), posted=j.get("published_date"), url=j.get("url"),
-            dept=j.get("department")))
+            dept=j.get("department"), desc=_html(j.get("description"))))
     return out
 
 

@@ -10,6 +10,7 @@ import glob
 import gzip
 import json
 import sqlite3
+import zlib
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -29,7 +30,9 @@ PRAGMA synchronous = OFF;
 CREATE TABLE boards(id INTEGER PRIMARY KEY, company TEXT, ats TEXT, url TEXT, evidence TEXT,
                     status TEXT, jobs INTEGER);
 CREATE TABLE jobs(id INTEGER PRIMARY KEY, board INTEGER, company TEXT, ats TEXT, title TEXT, loc TEXT,
-                  state TEXT, remote INTEGER, us INTEGER, posted INTEGER, seen INTEGER, url TEXT);
+                  state TEXT, remote INTEGER, us INTEGER, posted INTEGER, seen INTEGER, url TEXT, pay TEXT);
+-- one row per job that has a description; the HTML is zlib-compressed (the web app inflates it)
+CREATE TABLE job_details(job_id INTEGER PRIMARY KEY, body BLOB);
 """ % PAGE
 
 INDEXES = """
@@ -63,8 +66,13 @@ def day_of(s: str | None) -> int | None:
 
 def _compact(j: dict, f: int) -> dict:
     """Shard-format job -> state-format job (board fields dropped, first-seen day added)."""
-    return {"k": j["k"], "t": j["t"], "l": j["l"], "s": j["s"], "r": j["r"], "u": j["u"],
-            "d": j["d"], "url": j["url"], "f": f}
+    out = {"k": j["k"], "t": j["t"], "l": j["l"], "s": j["s"], "r": j["r"], "u": j["u"],
+           "d": j["d"], "url": j["url"], "f": f}
+    if j.get("x"):
+        out["x"] = j["x"]
+    if j.get("p"):
+        out["p"] = j["p"]
+    return out
 
 
 def merge(in_dir: Path, state_dir: Path, today: date, boards_path: Path = BOARDS):
@@ -165,7 +173,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
                 posted = j["f"]
             per_board[b["id"]] += 1
             rows.append((b["id"], b["company"], b["ats"], j["t"], j["l"], j["s"], j["r"], j["u"],
-                         posted, j["f"], j["url"]))
+                         posted, j["f"], j["url"], j.get("p"), j.get("x")))
     rows.sort(key=lambda r: (-r[8], -r[9], r[1]))
 
     by_ats = defaultdict(lambda: {"boards": 0, "ok": 0, "error": 0, "unsupported": 0, "jobs": 0})
@@ -190,8 +198,12 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
     con.executescript(SCHEMA)
 
     con.executemany("INSERT INTO boards VALUES (?,?,?,?,?,?,?)", board_rows)
-    con.executemany("INSERT INTO jobs(board,company,ats,title,loc,state,remote,us,posted,seen,url) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    con.executemany("INSERT INTO jobs(board,company,ats,title,loc,state,remote,us,posted,seen,url,pay) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [r[:12] for r in rows])
+    # rowids are 1..n in insertion order, so a job's id is its position in `rows`
+    con.executemany("INSERT INTO job_details(job_id, body) VALUES (?, ?)",
+                    ((i, zlib.compress(r[12].encode("utf-8"), 9))
+                     for i, r in enumerate(rows, start=1) if r[12]))
     con.commit()
     con.executescript(INDEXES)
     con.execute("ANALYZE")
@@ -229,6 +241,8 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
         "today": td, "version": version, "db_bytes": size,
         "jobs": len(rows), "us_confirmed": sum(r[7] for r in rows), "remote": sum(r[6] for r in rows),
         "new_today": sum(1 for r in rows if r[9] == td),
+        "with_pay": sum(1 for r in rows if r[11]),
+        "with_details": sum(1 for r in rows if r[12]),
         "boards": len(board_rows),
         "boards_ok": sum(1 for r in board_rows if r[5] == "ok"),
         "boards_with_jobs": sum(1 for r in board_rows if r[6] > 0),
