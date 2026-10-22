@@ -1,6 +1,7 @@
 name: Scrape and deploy
 
 # Daily incremental refresh (~12 min end to end), full sweep on Sundays.
+# While a sweep runs, publish-partial.yml publishes the shards that have finished (every 15 min).
 # State (each board's last result + every job's first-seen date) lives in the Actions cache.
 
 on:
@@ -105,6 +106,8 @@ jobs:
     # build even if some shards failed: their boards keep the previous run's jobs
     if: always() && needs.test.result == 'success' && needs.plan.result == 'success'
     runs-on: ubuntu-latest
+    # shared with publish-partial.yml so a partial deploy can't land after this one
+    concurrency: { group: pages-deploy, cancel-in-progress: false }
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -161,6 +164,7 @@ jobs:
     needs: test
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    concurrency: { group: pages-deploy, cancel-in-progress: false }
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
