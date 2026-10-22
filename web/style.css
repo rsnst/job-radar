@@ -369,3 +369,30 @@ body { background: var(--bg); }
 .card-foot .details:focus-visible { outline: 3px solid var(--focus); }
 .card .co button:focus-visible, .card .t a:focus-visible { outline: 3px solid var(--focus); border-radius: 4px; }
 .card .t a::after { content: none; }
+
+/* ---------- round 2: whole card opens details, tidier tags, phone filters */
+/* the list is a plain grid; no panel border behind the cards */
+.list { border: 0; background: none; box-shadow: none; border-radius: 0; overflow: visible; }
+/* links, company, save and tags sit above the stretched Details overlay */
+.card .t a, .card .co button, .card .save, .card .tags { position: relative; z-index: 2; }
+.card-foot .details { position: static; }
+.card-foot .details::after { content: ""; position: absolute; inset: 0; border-radius: 16px; z-index: 1; }
+.card:has(:focus-visible) { box-shadow: 0 0 0 3px var(--focus); }
+.card-head .save { margin-left: auto; align-self: flex-start; }
+.tags:not(:has(.badge)) { display: none; }
+.card-foot { margin-top: auto; padding-top: 12px; }
+.count { margin: 14px 2px 0; font-size: .84rem; color: var(--muted); min-height: 1.2em; }
+.empty p { margin: 0 0 12px; }
+.filters-toggle { display: none; }
+
+@media (max-width: 600px) {
+  .filters-toggle {
+    display: inline-flex; align-items: center; justify-self: start; height: 36px; padding: 0 14px;
+    font: inherit; font-size: .86rem; font-weight: 500; color: var(--ink); cursor: pointer;
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  }
+  .filters-toggle:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .filters { display: none; }
+  .filters.open { display: flex; }
+  .stats .upd { display: none; }
+}

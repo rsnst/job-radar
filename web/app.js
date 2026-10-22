@@ -9,7 +9,7 @@ let meta, db, worker;
 const jobById = new Map(); // job id -> row, for the save buttons
 
 // ---------- state <-> URL hash
-const JOB_KEYS = ["q", "days", "state", "ats", "remote", "fresh", "usonly", "board", "bname"];
+const JOB_KEYS = ["q", "days", "state", "ats", "sort", "remote", "fresh", "usonly", "board", "bname"];
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   return { tab: p.get("tab") || "jobs", ...Object.fromEntries(JOB_KEYS.map((k) => [k, p.get(k) || ""])) };
@@ -31,9 +31,11 @@ function visitWindow(today) {
     v = { prev: v.cur ?? null, cur: today };
     try { localStorage.setItem("jr.visit", JSON.stringify(v)); } catch {}
   }
+  returning = v.prev != null;
   return v.prev == null ? today : v.prev + 1; // first visit: "new today"
 }
 let newSince;
+let returning = false; // true once this browser has visited before, so "New" means something
 
 // ---------- formatting
 function ago(day) {
@@ -64,11 +66,12 @@ async function showBytes() {
 }
 
 // ---------- Jobs tab
-let jobsSeq = 0, lastId = 0, jobsDone = false, jobsLoading = false;
+let jobsSeq = 0, lastId = 0, loaded = 0, jobsDone = false, jobsLoading = false;
+const emptyJobs = () => '<li class="empty"><p>No jobs match these filters.</p><button type="button" class="btn" data-clear>Clear filters</button></li>';
 
 function jobFilters() {
   return {
-    q: S.q, days: S.days, state: S.state, ats: S.ats, board: S.board,
+    q: S.q, days: S.days, state: S.state, ats: S.ats, board: S.board, sort: S.sort,
     remote: S.remote === "1", usOnly: S.usonly === "1",
     newSince: S.fresh === "1" ? newSince : null,
   };
@@ -90,26 +93,34 @@ function refreshSaveButtons() {
   }
 }
 
+// Some boards publish placeholder names like "ADP employer (cid b77db729)". Show the real name.
+function displayName(name) {
+  const s = String(name || "").replace(/\s+employer\s*\(cid[^)]*\)/i, "").replace(/\s*\(cid[^)]*\)/i, "").trim();
+  return s || String(name || "");
+}
+
 // A calm warm monogram per company, so every card has a stable visual anchor
 function monogram(name) {
   let h = 0;
   for (const ch of String(name || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const letters = String(name || "?").replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).slice(0, 2)
-    .map((w) => w[0] || "").join("").toUpperCase() || "?";
+  const words = String(name || "").replace(/[^\p{L} ]/gu, " ").trim().split(/\s+/).filter(Boolean);
+  const letters = (words.slice(0, 2).map((w) => w[0]).join("") || "?").toUpperCase();
   return { letters, hue: 14 + (h % 36) }; // warm range: rust → amber
 }
 
 function jobCard(j) {
   jobById.set(j.id, j); // the details panel and save buttons look jobs up by id
-  const isNew = j.seen >= newSince;
-  const m = monogram(j.company);
+  const co = displayName(j.company);
+  const isNew = returning && j.seen >= newSince;
+  const m = monogram(co);
   return `<li class="card">
     <div class="card-head">
       <span class="mono" style="--h:${m.hue}" aria-hidden="true">${esc(m.letters)}</span>
       <div class="card-title">
         <p class="t"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></p>
-        <div class="co"><button type="button" data-board="${j.board}" data-name="${esc(j.company)}">${esc(j.company)}</button></div>
+        <div class="co"><button type="button" data-board="${j.board}" data-name="${esc(co)}">${esc(co)}</button></div>
       </div>
+      ${account.enabled ? saveButton(j) : ""}
     </div>
     <div class="meta">
       <span class="place">${esc(j.loc || "Location not listed")}</span>
@@ -124,31 +135,31 @@ function jobCard(j) {
     </div>
     <div class="card-foot">
       <button type="button" class="details" data-detail="${j.id}">Details</button>
-      ${account.enabled ? saveButton(j) : ""}
     </div>
   </li>`;
 }
 
 async function loadJobs(reset) {
   if (reset) {
-    jobsSeq++; lastId = 0; jobsDone = false;
+    jobsSeq++; lastId = 0; loaded = 0; jobsDone = false;
     $("#jobs").innerHTML = '<li class="skeleton"></li>'.repeat(4);
+    $("#count").textContent = "";
   }
   if (jobsDone || (jobsLoading && !reset)) return;
   const seq = jobsSeq;
   jobsLoading = true;
   $("#jobs-more").textContent = reset ? "" : "Loading…";
   try {
-    const rows = await query(jobsQuery({ ...jobFilters(), afterId: lastId }, meta));
+    const rows = await query(jobsQuery({ ...jobFilters(), afterId: lastId, offset: loaded }, meta));
     if (seq !== jobsSeq) return;
     if (reset) { $("#jobs").innerHTML = ""; jobById.clear(); }
-    if (!rows.length && !lastId) {
-      $("#jobs").innerHTML = '<li class="empty">No jobs match. Try fewer filters or a shorter search.</li>';
-    }
+    if (!rows.length && !loaded) $("#jobs").innerHTML = emptyJobs();
     $("#jobs").insertAdjacentHTML("beforeend", rows.map(jobCard).join(""));
     if (rows.length) lastId = rows[rows.length - 1].id;
+    loaded += rows.length;
     jobsDone = rows.length < PAGE;
-    $("#jobs-more").innerHTML = jobsDone ? (lastId ? "That's everything." : "") : '<button type="button" id="more-btn">Load more</button>';
+    $("#count").textContent = !loaded ? "" : jobsDone ? `${fmt.format(loaded)} job${loaded === 1 ? "" : "s"}` : `Showing ${fmt.format(loaded)} so far`;
+    $("#jobs-more").innerHTML = jobsDone ? (loaded ? "That's everything." : "") : '<button type="button" id="more-btn">Load more</button>';
   } catch (e) {
     if (seq === jobsSeq) $("#jobs").innerHTML = `<li class="err">Query failed: ${esc(e.message || e)}</li>`;
   } finally {
@@ -163,6 +174,10 @@ function syncJobControls() {
   $("#remote").checked = S.remote === "1";
   $("#fresh").checked = S.fresh === "1";
   $("#usonly").checked = S.usonly === "1";
+  $("#sort").value = S.sort || "newest";
+  // On phones the filters sit behind a button; show how many are active on it
+  const active = [S.days, S.state, S.ats, S.remote, S.fresh, S.usonly, S.sort].filter(Boolean).length;
+  $("#filters-toggle").textContent = active ? `Filters · ${active}` : "Filters";
   const bar = $("#company-filter");
   if (S.board) {
     bar.hidden = false;
@@ -176,12 +191,12 @@ function coRow(b) {
   const st = { ok: "fetched", error: "fetch failed", unsupported: "not indexed", not_run: "not run" }[b.status] || b.status;
   return `<li class="card">
     <div class="co-row">
-      <div><p class="t">${esc(b.company)}</p>
+      <div><p class="t">${esc(displayName(b.company))}</p>
         <div class="meta"><span>${esc(b.ats)}</span><span class="badge st-${esc(b.status)}">${esc(st)}</span>${b.evidence ? `<span>${esc(b.evidence)}</span>` : ""}</div></div>
       <div class="n">${fmt.format(b.jobs)}<small>US jobs</small></div>
     </div>
     <div class="co-actions">
-      ${b.jobs ? `<button type="button" data-board="${b.id}" data-name="${esc(b.company)}">See jobs</button>` : ""}
+      ${b.jobs ? `<button type="button" data-board="${b.id}" data-name="${esc(displayName(b.company))}">See jobs</button>` : ""}
       <a href="${esc(b.url)}" target="_blank" rel="noopener">Open board ↗</a>
     </div>
   </li>`;
@@ -381,7 +396,7 @@ function openSheet(j) {
   sheetReturn = document.activeElement;
   $("#sheet-title").textContent = j.title;
   $("#sheet-body").innerHTML = [
-    ["Company", j.company],
+    ["Company", displayName(j.company)],
     ["Location", j.loc || "Not listed"],
     ["Remote", j.remote ? "Yes" : "No"],
     ["State", j.state || "Not listed"],
@@ -421,6 +436,14 @@ function wire() {
   for (const k of ["days", "state", "ats"]) $("#" + k).addEventListener("change", () => setJob({ [k]: $("#" + k).value }));
   for (const k of ["remote", "fresh", "usonly"]) $("#" + k).addEventListener("change", () => setJob({ [k]: $("#" + k).checked ? "1" : "" }));
   $("#reset").addEventListener("click", () => setJob(Object.fromEntries(JOB_KEYS.map((k) => [k, ""]))));
+  $("#sort").addEventListener("change", () => setJob({ sort: $("#sort").value === "newest" ? "" : $("#sort").value }));
+  $("#filters-toggle").addEventListener("click", () => {
+    const open = $("#filters").classList.toggle("open");
+    $("#filters-toggle").setAttribute("aria-expanded", String(open));
+  });
+  $("#jobs").addEventListener("click", (e) => {
+    if (e.target.closest("[data-clear]")) setJob(Object.fromEntries(JOB_KEYS.map((k) => [k, ""])));
+  });
   $("#company-filter").addEventListener("click", (e) => { if (e.target.closest("button")) setJob({ board: "", bname: "" }); });
   const pickBoard = (e) => {
     const b = e.target.closest("button[data-board]");
@@ -505,7 +528,7 @@ async function main() {
   }
   newSince = visitWindow(meta.today);
   $("#fresh-label").textContent = newSince >= meta.today ? "New today" : "New since last visit";
-  $("#stats").textContent = `${fmt.format(meta.jobs)} US jobs · ${fmt.format(meta.boards_with_jobs)} companies hiring · updated ${updated(meta.generated_at)}`;
+  $("#stats").innerHTML = `${fmt.format(meta.jobs)} US jobs · ${fmt.format(meta.boards_with_jobs)} companies hiring<span class="upd"> · updated ${updated(meta.generated_at)}</span>`;
   for (const s of meta.states) $("#state").insertAdjacentHTML("beforeend", `<option>${esc(s)}</option>`);
   for (const [a, v] of Object.entries(meta.by_ats)) {
     if (v.jobs) $("#ats").insertAdjacentHTML("beforeend", `<option>${esc(a)}</option>`);

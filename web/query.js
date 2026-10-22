@@ -37,13 +37,22 @@ export function jobsQuery(f, meta) {
   if (f.remote) where.push("j.remote = 1");
   if (f.usOnly) where.push("j.us = 1");
   if (f.newSince != null) { where.push("j.seen >= ?"); params.push(f.newSince); }
-  if (f.afterId) { where.push(`${idCol} > ?`); params.push(f.afterId); }
+  const sort = ["company", "pay"].includes(f.sort) ? f.sort : "newest";
+  if (sort === "newest" && f.afterId) { where.push(`${idCol} > ?`); params.push(f.afterId); }
+  // j.pay only exists in databases built after pay was added (meta.with_pay); older ones get NULL
+  const payCol = meta?.with_pay != null ? "j.pay" : "NULL";
+  // Newest pages by id (cheap keyset). Other sorts scan the filtered rows and page by offset.
+  const order = {
+    newest: idCol,
+    company: "j.company COLLATE NOCASE, j.id",
+    pay: `(${payCol} IS NULL OR ${payCol} = ''), j.id`,
+  }[sort];
+  const offset = sort === "newest" ? "" : ` OFFSET ${Number(f.offset) | 0}`;
   const sql =
-    // j.pay only exists in databases built after pay was added (meta.with_pay); older ones get NULL
     `SELECT j.id, j.title, j.company, j.ats, j.loc, j.state, j.remote, j.us, j.posted, j.seen, j.url, j.board, ` +
-    `${meta?.with_pay != null ? "j.pay" : "NULL"} AS pay ` +
+    `${payCol} AS pay ` +
     `FROM ${from}` + (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
-    ` ORDER BY ${idCol} LIMIT ${PAGE}`;
+    ` ORDER BY ${order} LIMIT ${PAGE}${offset}`;
   return { sql, params };
 }
 

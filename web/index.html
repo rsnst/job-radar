@@ -36,10 +36,11 @@
 
 <main>
   <section id="tab-jobs" class="tab">
-    <p class="intro">Open US jobs pulled straight from employers’ career sites and refreshed daily. Click a title to apply on the employer’s own page. Save a job to keep track of it.</p>
+    <p class="intro">Open US jobs from employers’ career sites, refreshed daily. Open a card for details, or Apply to go to the employer’s page.</p>
     <form id="jobs-form" class="controls" autocomplete="off">
       <input id="q" type="search" placeholder="Search titles, companies, cities — e.g. .net developer austin" enterkeyhint="search">
-      <div class="filters">
+      <button type="button" id="filters-toggle" class="filters-toggle" aria-expanded="false" aria-controls="filters">Filters</button>
+      <div id="filters" class="filters">
         <select id="days" aria-label="Posted">
           <option value="">Any date</option>
           <option value="1">Past 24 hours</option>
@@ -50,6 +51,11 @@
         </select>
         <select id="state" aria-label="State"><option value="">All states</option></select>
         <select id="ats" aria-label="ATS"><option value="">All ATS</option></select>
+        <select id="sort" aria-label="Sort">
+          <option value="newest">Newest first</option>
+          <option value="company">Company A–Z</option>
+          <option value="pay">Pay listed first</option>
+        </select>
         <label class="tog"><input type="checkbox" id="remote"> Remote</label>
         <label class="tog"><input type="checkbox" id="fresh"> <span id="fresh-label">New since last visit</span></label>
         <label class="tog"><input type="checkbox" id="usonly"> US confirmed</label>
@@ -57,7 +63,8 @@
       </div>
     </form>
     <div id="company-filter" class="pill-bar" hidden></div>
-    <ol id="jobs" class="list" aria-live="polite"></ol>
+    <p id="count" class="count" aria-live="polite"></p>
+    <ol id="jobs" class="list"></ol>
     <div id="jobs-more" class="more"></div>
   </section>
 
