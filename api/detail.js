@@ -35,9 +35,52 @@ async function workday(u) {
   return (d.jobPostingInfo && d.jobPostingInfo.jobDescription) || "";
 }
 
+
+// jobs.smartrecruiters.com/{company}/{id}
+async function smartrecruiters(u) {
+  const [co, id] = u.pathname.split("/").filter(Boolean);
+  if (!co || !id) return "";
+  const d = await getJson(`https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(co)}/postings/${encodeURIComponent(id)}`);
+  const secs = (d.jobAd && d.jobAd.sections) || {};
+  return ["companyDescription", "jobDescription", "qualifications", "additionalInformation"]
+    .map((k) => secs[k] && secs[k].text).filter(Boolean).join("")
+    || Object.values(secs).map((x) => x && x.text).filter(Boolean).join("");
+}
+
+// {sub}.bamboohr.com/careers/{id}
+async function bamboohr(u) {
+  const [, id] = u.pathname.split("/").filter(Boolean);
+  if (!id) return "";
+  const d = await getJson(`https://${u.hostname}/careers/${encodeURIComponent(id)}/detail`);
+  return (d.result && d.result.jobOpening && d.result.jobOpening.description) || "";
+}
+
+// apply.workable.com/{sub}/j/{shortcode}/
+async function workable(u) {
+  const parts = u.pathname.split("/").filter(Boolean);
+  const sub = parts[0];
+  const sc = parts[parts.indexOf("j") + 1];
+  if (!sub || !sc) return "";
+  const d = await getJson(`https://apply.workable.com/api/v2/accounts/${encodeURIComponent(sub)}/jobs/${encodeURIComponent(sc)}`);
+  return [d.description, d.requirements, d.benefits].filter((x) => typeof x === "string" && x).join("");
+}
+
+// {sub}.pinpointhq.com/en/postings/{uuid}: the board's list already carries the text, so find this job in it
+async function pinpoint(u) {
+  const list = await getJson(`https://${u.hostname}/postings.json`);
+  const j = (list.data || []).find((x) => x.url && new URL(x.url).pathname === u.pathname);
+  if (!j) return "";
+  return [j.description, j.key_responsibilities, j.skills_knowledge_expertise, j.benefits]
+    .filter((x) => typeof x === "string" && x).join("");
+}
+
 const ROUTES = [
   { match: (h) => h === "ats.rippling.com", fetch: rippling },
   { match: (h) => h.endsWith(".myworkdayjobs.com"), fetch: workday },
+  { match: (h) => h === "jobs.smartrecruiters.com", fetch: smartrecruiters },
+  { match: (h) => h.endsWith(".bamboohr.com"), fetch: bamboohr },
+  { match: (h) => h === "apply.workable.com", fetch: workable },
+  { match: (h) => h.endsWith(".pinpointhq.com"), fetch: pinpoint },
 ];
 
 export default async function handler(req, res) {
