@@ -19,6 +19,8 @@ from .run import BOARDS, load_boards
 from .state import day, load_boards_state, load_jobs_state, save_boards_state, save_jobs_state
 
 STALE_DAYS = 3  # keep a board's last jobs this long if it errors or isn't reached
+# the published DB only holds jobs posted within this many days (state keeps all of them)
+SHOW_DAYS = 35
 
 CHUNK = 25 * 1024 * 1024
 PAGE = 4096
@@ -171,6 +173,8 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
             posted = day_of(j.get("d"))
             if posted is None or posted > td:
                 posted = j["f"]
+            if posted < td - SHOW_DAYS:
+                continue
             per_board[b["id"]] += 1
             rows.append((b["id"], b["company"], b["ats"], j["t"], j["l"], j["s"], j["r"], j["u"],
                          posted, j["f"], j["url"], j.get("p"), j.get("x")))
@@ -251,6 +255,7 @@ def build(in_dir: Path, site: Path, state_dir: Path, today: date | None = None, 
         "by_ats": dict(sorted(by_ats.items(), key=lambda kv: -kv[1]["jobs"])),
         "states": [s for s, _ in states.most_common()],
         "cutoffs": cutoffs,
+        "show_days": SHOW_DAYS,
         "run": run,
     }
     (site / "meta.json").write_text(json.dumps(meta, indent=1))
