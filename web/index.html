@@ -89,6 +89,19 @@
   <a href="https://github.com/rsnst/job-radar">Source</a>
 </footer>
 
+<aside id="sheet" class="sheet" hidden>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-top"><button type="button" id="sheet-close" class="link">Close</button></div>
+    <h2 id="sheet-title"></h2>
+    <dl id="sheet-body" class="facts"></dl>
+    <p class="note">Applications are submitted on the employer’s site. Job Radar doesn’t apply for you.</p>
+    <div class="sheet-actions">
+      <a id="sheet-apply" class="btn primary" href="#" target="_blank" rel="noopener">Apply on employer site</a>
+      <button type="button" id="sheet-save" class="btn" hidden>Save job</button>
+    </div>
+  </div>
+</aside>
+
 <script src="vendor/index.js"></script>
 <script type="module" src="app.js"></script>
 </body>

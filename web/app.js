@@ -102,6 +102,7 @@ function jobCard(j) {
       ${j.us ? "" : '<span class="badge unk" title="Location didn\'t say which country">LOC?</span>'}
       <span>${esc(j.ats)}</span>
       <span>${ago(j.posted)}</span>
+      <button type="button" class="details" data-detail="${j.id}">Details</button>
       ${account.enabled ? saveButton(j) : ""}
     </div>
   </li>`;
@@ -247,6 +248,41 @@ function showTab(tab) {
   writeHash(S);
 }
 
+// ---------- job details panel
+let sheetJob = null, sheetReturn = null;
+function fmtDay(d) { return new Date(d * 86400000).toISOString().slice(0, 10); }
+function openSheet(j) {
+  if (!j) return;
+  sheetJob = j;
+  sheetReturn = document.activeElement;
+  $("#sheet-title").textContent = j.title;
+  $("#sheet-body").innerHTML = [
+    ["Company", j.company],
+    ["Location", j.loc || "Not listed"],
+    ["Remote", j.remote ? "Yes" : "No"],
+    ["State", j.state || "Not listed"],
+    ["Source", j.ats],
+    ["Posted", j.posted != null ? `${fmtDay(j.posted)} (${ago(j.posted)})` : "Not listed"],
+  ].map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("");
+  $("#sheet-apply").href = j.url;
+  $("#sheet").hidden = false;
+  updateSheetSave();
+  $("#sheet-close").focus();
+}
+function closeSheet() {
+  $("#sheet").hidden = true;
+  sheetJob = null;
+  if (sheetReturn && sheetReturn.focus) sheetReturn.focus();
+}
+function updateSheetSave() {
+  const b = $("#sheet-save");
+  b.hidden = !account.enabled;
+  const on = !!sheetJob && account.saved.has(sheetJob.url);
+  b.textContent = on ? "Saved" : "Save job";
+  b.classList.toggle("on", on);
+  b.setAttribute("aria-pressed", String(on));
+}
+
 // ---------- wiring
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function setJob(patch) { Object.assign(S, patch); writeHash(S); syncJobControls(); loadJobs(true); }
@@ -286,6 +322,21 @@ function wire() {
     catch (err) { alert(`Couldn't save: ${err.message || err}`); }
     finally { b.disabled = false; refreshSaveButtons(); }
   };
+  $("#jobs").addEventListener("click", (e) => {
+    const d = e.target.closest("button[data-detail]");
+    if (d) openSheet(jobById.get(Number(d.dataset.detail)));
+  });
+  $("#sheet-close").addEventListener("click", closeSheet);
+  $("#sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+  $("#sheet-save").addEventListener("click", async () => {
+    if (!sheetJob) return;
+    const b = $("#sheet-save");
+    b.disabled = true;
+    try { await toggleSave({ url: sheetJob.url, title: sheetJob.title, company: sheetJob.company, loc: sheetJob.loc }); }
+    catch (err) { alert(`Couldn't save: ${err.message || err}`); }
+    finally { b.disabled = false; refreshSaveButtons(); updateSheetSave(); }
+  });
   $("#jobs").addEventListener("click", onSave);
   $("#jobs").addEventListener("click", pickBoard);
   $("#companies").addEventListener("click", pickBoard);
@@ -322,7 +373,7 @@ async function main() {
   }
   renderCoverage();
   syncJobControls();
-  account.onChange = () => { updateAuthUI(); refreshSaveButtons(); if (S.tab === "saved") loadSaved(); };
+  account.onChange = () => { updateAuthUI(); refreshSaveButtons(); updateSheetSave(); if (S.tab === "saved") loadSaved(); };
   initAccount().then(() => { updateAuthUI(); refreshSaveButtons(); });
   wire();
   showTab(S.tab);
