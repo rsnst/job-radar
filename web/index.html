@@ -100,11 +100,13 @@
 <dialog id="signin-dialog" class="signin">
   <form method="dialog" id="signin-form">
     <h2>Sign in</h2>
-    <p class="note">We’ll email you a sign-in link. No password needed.</p>
     <label class="field"><span>Email</span><input id="signin-email" type="email" autocomplete="email" required></label>
+    <label class="field"><span>Password</span><input id="signin-password" type="password" autocomplete="current-password" minlength="8"></label>
     <div class="sheet-actions">
-      <button type="button" id="signin-send" class="btn primary">Email me a link</button>
+      <button type="button" id="signin-pass" class="btn primary">Sign in</button>
+      <button type="button" id="signup-pass" class="btn">Create account</button>
     </div>
+    <p class="note">Or <button type="button" id="signin-send" class="link">email me a sign-in link</button> instead.</p>
     <p id="signin-msg" class="note" role="status"></p>
     <div class="sheet-top"><button type="button" id="signin-close" class="link">Close</button></div>
   </form>

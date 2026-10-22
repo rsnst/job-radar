@@ -60,6 +60,23 @@ export async function signInWithEmail(email) {
   if (error) throw error;
 }
 
+// Email and password. Accounts created here are confirmed by an email link first (see the note in the dialog).
+export async function signInWithPassword(email, password) {
+  if (!sb) throw new Error("Accounts are not configured");
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+}
+
+export async function signUpWithPassword(email, password) {
+  if (!sb) throw new Error("Accounts are not configured");
+  const { data, error } = await sb.auth.signUp({
+    email, password, options: { emailRedirectTo: location.origin + location.pathname },
+  });
+  if (error) throw error;
+  // With email confirmation on, there's no session until the link is opened.
+  return { needsConfirm: !data.session };
+}
+
 export async function signIn() {
   if (!sb) return;
   await sb.auth.signInWithOAuth({

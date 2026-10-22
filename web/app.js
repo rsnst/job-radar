@@ -1,5 +1,5 @@
 import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
-import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, listSaved } from "./account.js";
+import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -457,6 +457,35 @@ function wire() {
   };
   $("#auth").addEventListener("click", () => (account.user ? signOut() : openSignIn()));
   $("#signin-close").addEventListener("click", () => $("#signin-dialog").close());
+  const authMsg = (t) => { $("#signin-msg").textContent = t; };
+  const credentials = () => {
+    const email = $("#signin-email").value.trim();
+    const password = $("#signin-password").value;
+    if (!email || !$("#signin-email").checkValidity()) { authMsg("Enter a valid email address."); return null; }
+    if (password.length < 8) { authMsg("Use a password of at least 8 characters."); return null; }
+    return { email, password };
+  };
+  $("#signin-pass").addEventListener("click", async () => {
+    const c = credentials(); if (!c) return;
+    authMsg("Signing in…");
+    try {
+      await signInWithPassword(c.email, c.password);
+      $("#signin-dialog").close();
+    } catch (e) {
+      authMsg(`Couldn’t sign in: ${e.message || e}`);
+    }
+  });
+  $("#signup-pass").addEventListener("click", async () => {
+    const c = credentials(); if (!c) return;
+    authMsg("Creating your account…");
+    try {
+      const r = await signUpWithPassword(c.email, c.password);
+      if (r.needsConfirm) authMsg("Account created. Open the confirmation link we emailed you, then sign in.");
+      else $("#signin-dialog").close();
+    } catch (e) {
+      authMsg(`Couldn’t create the account: ${e.message || e}`);
+    }
+  });
   $("#signin-send").addEventListener("click", async () => {
     const email = $("#signin-email").value.trim();
     const msg = $("#signin-msg");
