@@ -29,6 +29,7 @@
     <button role="tab" data-tab="companies" aria-selected="false">Companies</button>
     <button role="tab" data-tab="saved" aria-selected="false">Saved</button>
     <button role="tab" data-tab="coverage" aria-selected="false">Coverage</button>
+    <button role="tab" data-tab="admin" aria-selected="false" id="admin-tab" hidden>Admin</button>
   </nav>
   <button type="button" id="auth" class="link auth" hidden>Sign in</button>
 </header>
@@ -82,7 +83,26 @@
     <p class="note" id="run"></p>
     <div class="table-wrap"><table id="coverage"></table></div>
   </section>
+
+  <section id="tab-admin" class="tab" hidden>
+    <p class="note">Scrape run numbers for admins. Read from the published meta.json, which is already public.</p>
+    <div id="admin-body"></div>
+  </section>
 </main>
+
+<dialog id="signin-dialog" class="signin">
+  <form method="dialog" id="signin-form">
+    <h2>Sign in</h2>
+    <p class="note">We’ll email you a sign-in link. No password needed.</p>
+    <label class="field"><span>Email</span><input id="signin-email" type="email" autocomplete="email" required></label>
+    <div class="sheet-actions">
+      <button type="button" id="signin-send" class="btn primary">Email me a link</button>
+      <button type="button" id="signin-google" class="btn">Continue with Google</button>
+    </div>
+    <p id="signin-msg" class="note" role="status"></p>
+    <div class="sheet-top"><button type="button" id="signin-close" class="link">Close</button></div>
+  </form>
+</dialog>
 
 <footer class="foot">
   <span id="bytes"></span>

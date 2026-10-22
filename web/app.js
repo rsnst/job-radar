@@ -1,5 +1,5 @@
 import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
-import { account, initAccount, toggleSave, signIn, signOut, listSaved } from "./account.js";
+import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, listSaved } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -237,6 +237,42 @@ function updateAuthUI() {
   b.hidden = !account.enabled;
   b.textContent = account.user ? "Sign out" : "Sign in";
   b.dataset.mode = account.user ? "out" : "in";
+  $("#admin-tab").hidden = !account.isAdmin;
+  if (!account.isAdmin && S.tab === "admin") showTab("jobs");
+}
+
+// ---------- admin panel: numbers from the last scrape (meta.json)
+function renderAdmin() {
+  const r = meta.run || {};
+  const n = (v) => (v == null ? "—" : fmt.format(v));
+  const rows = [
+    ["Last run mode", r.mode ?? "—"],
+    ["Shards reporting", n(r.shards)],
+    ["Requests", n(r.requests)],
+    ["Throttled (429)", n(r.throttled)],
+    ["Fetch time (slowest shard, s)", n(Math.round(r.fetch_seconds || 0))],
+    ["Boards", n(meta.boards)],
+    ["Boards OK", n(meta.boards_ok)],
+    ["Boards with jobs", n(meta.boards_with_jobs)],
+    ["Boards error", n(meta.boards_error)],
+    ["Boards unsupported", n(meta.boards_unsupported)],
+    ["Jobs", n(meta.jobs)],
+    ["Jobs with pay", meta.with_pay == null ? "—" : n(meta.with_pay)],
+    ["Jobs with description", meta.with_details == null ? "—" : n(meta.with_details)],
+    ["Outcome", Object.entries(r.outcome || {}).map(([k, v]) => `${k}: ${fmt.format(v)}`).join(" · ") || "—"],
+  ];
+  const ats = Object.entries(meta.by_ats || {}).map(([name, a]) =>
+    `<tr><td>${esc(name)}</td><td>${n(a.boards)}</td><td>${n(a.ok)}</td><td>${n(a.error)}</td><td>${n(a.unsupported)}</td><td>${n(a.jobs)}</td></tr>`).join("");
+  $("#admin-body").innerHTML = `
+    <dl class="facts">${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
+    <div class="table-wrap"><table><thead><tr><th>ATS</th><th>Boards</th><th>OK</th><th>Error</th><th>Unsupported</th><th>Jobs</th></tr></thead><tbody>${ats}</tbody></table></div>`;
+}
+
+// ---------- sign-in dialog
+function openSignIn() {
+  $("#signin-msg").textContent = "";
+  $("#signin-dialog").showModal();
+  $("#signin-email").focus();
 }
 
 // ---------- tabs
@@ -244,8 +280,9 @@ let coLoaded = false;
 function showTab(tab) {
   S.tab = tab;
   for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
-  for (const t of ["jobs", "companies", "saved", "coverage"]) $("#tab-" + t).hidden = t !== tab;
+  for (const t of ["jobs", "companies", "saved", "coverage", "admin"]) $("#tab-" + t).hidden = t !== tab;
   if (tab === "saved") loadSaved();
+  if (tab === "admin" && account.isAdmin) renderAdmin();
   if (tab === "companies" && !coLoaded && db) { coLoaded = true; loadCompanies(true); }
   writeHash(S);
 }
@@ -366,7 +403,21 @@ function wire() {
     showTab("jobs");
     scrollTo({ top: 0 });
   };
-  $("#auth").addEventListener("click", () => (account.user ? signOut() : signIn()));
+  $("#auth").addEventListener("click", () => (account.user ? signOut() : openSignIn()));
+  $("#signin-close").addEventListener("click", () => $("#signin-dialog").close());
+  $("#signin-google").addEventListener("click", () => signIn());
+  $("#signin-send").addEventListener("click", async () => {
+    const email = $("#signin-email").value.trim();
+    const msg = $("#signin-msg");
+    if (!email || !$("#signin-email").checkValidity()) { msg.textContent = "Enter a valid email address."; return; }
+    msg.textContent = "Sending…";
+    try {
+      await signInWithEmail(email);
+      msg.textContent = "Check your email for the sign-in link.";
+    } catch (e) {
+      msg.textContent = `Couldn’t send the link: ${e.message || e}`;
+    }
+  });
   $("#saved").addEventListener("click", async (e) => {
     const u = e.target.closest("button[data-unsave]");
     if (!u) return;

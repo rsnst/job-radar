@@ -8,6 +8,7 @@ const cfg = window.JOB_RADAR_CONFIG || {};
 export const account = {
   enabled: false,
   user: null,
+  isAdmin: false, // a row in public.admins for this user; the UI gate, see supabase/admin.sql
   saved: new Set(), // apply URLs of the signed-in user's saved jobs
   onChange: () => {},
 };
@@ -35,13 +36,28 @@ export async function initAccount() {
 async function setUser(user) {
   account.user = user;
   account.saved = new Set();
+  account.isAdmin = false;
   if (user) {
     try {
       const { data } = await sb.from("saved_jobs").select("url").limit(5000);
       for (const r of data || []) account.saved.add(r.url);
     } catch (e) { console.warn("Couldn't load saved jobs:", e); }
+    try {
+      const { data } = await sb.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
+      account.isAdmin = !!data;
+    } catch (e) { console.warn("Couldn't check admin role:", e); }
   }
   account.onChange();
+}
+
+// Passwordless sign-in: Supabase emails a link that signs the browser in.
+export async function signInWithEmail(email) {
+  if (!sb) throw new Error("Accounts are not configured");
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: location.origin + location.pathname },
+  });
+  if (error) throw error;
 }
 
 export async function signIn() {

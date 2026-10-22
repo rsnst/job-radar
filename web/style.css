@@ -271,3 +271,14 @@ tr:last-child td { border-bottom: 0; }
 .jd-body li { margin: .25rem 0; }
 .jd-body h1, .jd-body h2, .jd-body h3, .jd-body h4 { font-size: .98rem; font-weight: 600; margin: 1rem 0 .4rem; }
 .jd-body a { color: var(--accent); }
+
+/* sign-in dialog */
+dialog.signin { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); width: min(420px, calc(100vw - 32px)); padding: 1.25rem; }
+dialog.signin::backdrop { background: rgba(0,0,0,.4); }
+dialog.signin h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+dialog.signin .field { display: grid; gap: .35rem; margin: .75rem 0; font-size: .9rem; }
+dialog.signin input { font: inherit; padding: .6rem .7rem; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); color: var(--ink); }
+#tab-admin table { width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: 1rem; }
+#tab-admin th, #tab-admin td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line); }
+#tab-admin th { color: var(--muted); font-weight: 500; }
+#tab-admin td:not(:first-child), #tab-admin th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
