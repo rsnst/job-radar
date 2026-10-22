@@ -93,7 +93,7 @@ jobs:
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           m = json.load(open("site/meta.json")); r = m["run"]
-          print(f"**Partial** · {r['shards']} of 20 shards finished · {m['jobs']:,} jobs\n")
+          print(f"**Partial** · {r['shards']} of 40 shards finished · {m['jobs']:,} jobs\n")
           PY
 
       - name: Deploy
