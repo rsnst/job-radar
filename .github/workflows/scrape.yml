@@ -144,7 +144,7 @@ jobs:
       - name: Build site
         run: |
           node scripts/vendor.mjs site
-          du -sh out state
+          du -sh out
 
       - name: Build database
         run: python -u -m scraper.build_db --in out --site site --state state > build.json
