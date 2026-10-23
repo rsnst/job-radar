@@ -55,17 +55,21 @@ async function verify(page, ctx, since) {
 
 async function create(page, ctx, host) {
   if (!ctx.key || !ctx.domain) return stop("account-not-configured", "Account creation is on, but the worker has no CREDENTIAL_KEY or INBOX_DOMAIN yet.");
+  // Opting into account automation is not consent to an employer's agreement.
+  // Hand off before creating an alias or saving a password.
+  const boxes = page.locator('input[type="checkbox"]:visible');
+  for (let i = 0; i < await boxes.count(); i++) {
+    const box = boxes.nth(i);
+    const label = await box.evaluate((el) => [...(el.labels || [])].map((l) => l.innerText || l.textContent || "").join(" ") + " " + (el.getAttribute("aria-label") || ""));
+    if (/terms|privacy|agree|consent|certif(y|ication)|authorize|declaration/i.test(label)) {
+      return stop("account-terms", "Review the employer's terms and create the account yourself. Job Compass will not accept legal agreements for you.");
+    }
+  }
   const email = await ensureAlias(ctx.rest, ctx.run.user_id, ctx.domain);
   const password = generatePassword();
   await page.locator(EMAIL).first().fill(email);
   const pws = passwordFields(page);
   for (let i = 0; i < await pws.count(); i++) await pws.nth(i).fill(password);
-  const terms = page.locator('input[type="checkbox"]:visible');
-  for (let i = 0; i < await terms.count(); i++) {
-    const t = terms.nth(i);
-    const label = await t.evaluate((el) => [...(el.labels || [])].map((l) => l.textContent).join(" ") + (el.getAttribute("aria-label") || ""));
-    if (/terms|privacy|create (an )?account|agree/i.test(label)) await t.check();
-  }
   // Save the credential before submitting so a created account is never left without its password.
   const row = { user_id: ctx.run.user_id, host, email, password_enc: encryptSecret(password, ctx.key) };
   await ctx.rest("employer_accounts?on_conflict=user_id,host", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) });
