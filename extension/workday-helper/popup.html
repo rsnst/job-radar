@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Job Compass Workday Helper</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <main>
+    <div class="brand"><span class="mark">JC</span><div><strong>Workday Helper</strong><small>Local profile autofill</small></div></div>
+    <section id="status" class="status" role="status">Checking this browser…</section>
+    <label class="file">Import profile JSON<input id="file" type="file" accept="application/json,.json"></label>
+    <button id="fill" class="primary" type="button" disabled>Fill matching fields on this page</button>
+    <button id="clear" type="button" disabled>Remove saved profile</button>
+    <p class="note">Your profile stays in this browser. The export file contains personal details; delete it from Downloads after import if you no longer need it. Filling is user-triggered. Check every field. This helper never creates accounts, handles verification or CAPTCHA, selects equal-opportunity answers, accepts terms, or submits.</p>
+    <p id="message" class="message" aria-live="polite"></p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import * as model from "../web/flow-model.js";
 import * as store from "../web/store.js";
 
-const { DEMO_JOB, DEMO_PROFILE, FIELDS, STEP_LABEL, applyAnswers, buildDemoDraft, draftSource, getPath, isDemoJob, missingRequired, reviewBlockers, setPath } = model;
+const { DEMO_JOB, DEMO_PROFILE, FIELDS, STEP_LABEL, applyAnswers, buildDemoDraft, draftSource, getPath, isDemoJob, missingRequired, reviewBlockers, setPath, supportText } = model;
 
 test("setPath returns a new object and leaves the input unchanged", () => {
   const a = { work: { authorizedUS: "yes" } };
@@ -37,6 +37,15 @@ test("demo job is recognised by its demo:// address and can't reach an employer"
   assert.ok(DEMO_JOB.url.startsWith("demo://"));
   assert.equal(isDemoJob({ url: "https://boards.greenhouse.io/acme/jobs/1" }), false);
   assert.equal(isDemoJob({ url: "https://example.com/job", demo: true }), true, "a demo flag alone also marks it demo");
+});
+
+test("Workday support copy sets the right expectation and the demo exercises that guide", () => {
+  const copy = supportText("Workday");
+  assert.match(copy, /prepares a tailored resume and answer packet/i);
+  assert.match(copy, /optional local browser helper fills clearly matched profile fields only when you click it/i);
+  assert.match(copy, /accounts, verification, CAPTCHA, review, and submission/i);
+  assert.equal(DEMO_JOB.ats, "Workday-style mock (synthetic)");
+  assert.equal(isDemoJob(DEMO_JOB), true, "the Workday-style walkthrough remains an isolated demo");
 });
 
 test("demo draft is built from the profile, flags what the profile lacks, and names no real employer", () => {

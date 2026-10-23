@@ -672,6 +672,27 @@ async function saveProfile(text) {
   return true;
 }
 
+async function exportWorkdayProfile() {
+  setProfileMsg("Preparing a local profile export…");
+  const details = await apiFetch("/api/profile-details");
+  if (!details.ok) {
+    setProfileMsg(details.data?.error || "Couldn't export your profile.");
+    return;
+  }
+  const source = details.data.data || {};
+  const profile = Object.fromEntries(["contact", "address", "links", "experience", "education"]
+    .filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
+  if (source.work) profile.work = { authorizedUS: source.work.authorizedUS || "", needsSponsorship: source.work.needsSponsorship || "" };
+  const payload = { format: "job-compass-workday-profile", version: 1, exportedAt: new Date().toISOString(), profile };
+  const href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = "job-compass-workday-profile.json";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
+  setProfileMsg("Downloaded to this device. Import it in the Job Compass Workday Helper extension; it is not uploaded anywhere.");
+}
+
 // Resume files are read in the browser; the server only stores the resulting text.
 const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 const RESUME_LIBS = {
@@ -845,6 +866,7 @@ function wire() {
   $("#chat-close").addEventListener("click", closeChat);
   $("#chat-form").addEventListener("submit", sendChat);
   $("#profile-save").addEventListener("click", () => saveProfile($("#profile-text").value.trim()));
+  $("#profile-export-workday").addEventListener("click", exportWorkdayProfile);
   $("#profile-delete").addEventListener("click", () => { if (confirm("Delete your resume? This can't be undone.")) saveProfile(""); });
   $("#profile-close").addEventListener("click", () => $("#profile-dialog").close());
   setupResumeUpload();

@@ -82,7 +82,7 @@ export const DEMO_JOB = {
   title: "Senior Analyst (synthetic demo role)",
   company: "Demo Company (synthetic)",
   url: "demo://synthetic-job/senior-analyst",
-  ats: "Demo mock ATS",
+  ats: "Workday-style mock (synthetic)",
   loc: "Demo City, ST",
   state: "ST",
   remote: false,
@@ -153,6 +153,9 @@ export const STEP_LABEL = {
 // What the app can do on each platform today. Nothing here is automated yet; see docs/ATS_SUPPORT.md.
 export function supportText(ats) {
   const name = ats ? String(ats) : "This employer's site";
+  if (/workday/i.test(name)) {
+    return "Workday: Job Compass prepares a tailored resume and answer packet, then opens the employer's page. The optional local browser helper fills clearly matched profile fields only when you click it. You handle accounts, verification, CAPTCHA, review, and submission.";
+  }
   return `${name}: the app doesn't fill or submit this form. You complete the account and application steps yourself. Pre-fill isn't built for this platform yet.`;
 }
 
