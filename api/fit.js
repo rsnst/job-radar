@@ -3,6 +3,7 @@
 // gets FIT_DAILY_LIMIT new checks a day (default 5), so the free quota goes a long way.
 import { createHash } from "node:crypto";
 import { currentUser, restHeaders } from "../lib/supa.js";
+import { useQuota, refundQuota } from "../lib/quota.js";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const DAILY = Number(process.env.FIT_DAILY_LIMIT || 5);
@@ -78,18 +79,16 @@ export default async function handler(req, res) {
   const [hit] = cr.ok ? await cr.json() : [];
   if (hit?.result?.profile_hash === profileHash) return res.status(200).json({ ...hit.result, cached: true });
 
-  // daily allowance
-  const day = new Date().toISOString().slice(0, 10);
-  const ur = await fetch(`${ctx.url}/rest/v1/fit_usage?select=n&user_id=eq.${ctx.id}&day=eq.${day}`, { headers: restHeaders(ctx) });
-  const [usage] = ur.ok ? await ur.json() : [];
-  if ((usage?.n || 0) >= DAILY) {
-    return res.status(429).json({ error: `You've used today's ${DAILY} checks. Try again tomorrow.` });
-  }
+  // daily allowance, counted atomically by the database; given back if the AI call fails
+  const q = await useQuota(ctx, "fit", DAILY);
+  if (!q.ok) return res.status(502).json({ error: "Couldn't check your limit. Try again." });
+  if (!q.allowed) return res.status(429).json({ error: `You've used today's ${DAILY} checks. Try again tomorrow.` });
 
   let raw;
   try {
     raw = await askGroq({ title, text: jobText }, resume);
   } catch (e) {
+    await refundQuota(ctx, "fit");
     if (e.code === 429) return res.status(429).json({ error: "The free AI limit is used up for today. Try again later." });
     return res.status(502).json({ error: "The AI check didn't finish. Try again in a moment." });
   }
@@ -112,14 +111,5 @@ export default async function handler(req, res) {
     headers: restHeaders(ctx, { Prefer: "resolution=merge-duplicates,return=minimal" }),
     body: JSON.stringify({ user_id: ctx.id, job_key: url, result }),
   });
-  if (usage) {
-    await fetch(`${ctx.url}/rest/v1/fit_usage?user_id=eq.${ctx.id}&day=eq.${day}`, {
-      method: "PATCH", headers: restHeaders(ctx, { Prefer: "return=minimal" }), body: JSON.stringify({ n: usage.n + 1 }),
-    });
-  } else {
-    await fetch(`${ctx.url}/rest/v1/fit_usage`, {
-      method: "POST", headers: restHeaders(ctx, { Prefer: "return=minimal" }), body: JSON.stringify({ user_id: ctx.id, day, n: 1 }),
-    });
-  }
   return res.status(200).json({ ...result, cached: false });
 }

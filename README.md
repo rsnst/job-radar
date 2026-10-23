@@ -137,6 +137,7 @@ Free-tier notes: results are cached per user and job, so a repeat check costs no
 ## Application assistant (tailored materials and tracker)
 
 1. Run `supabase/applications.sql` once in the Supabase SQL editor. It creates the tracker, versioned resume and cover-letter tables, and the daily usage counter, all with row-level security.
+1. Run `supabase/hardening.sql` after the files above (and before deploying code that calls `use_quota`). It makes the daily limits atomic and tamper-proof and restricts who can queue application runs. Safe to re-run.
 2. Optional: set `TAILOR_DAILY_LIMIT` in Vercel (default 10 drafts per user per day). It uses the same `GROQ_API_KEY` as the fit check.
 3. Redeploy.
 

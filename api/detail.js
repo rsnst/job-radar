@@ -9,6 +9,7 @@ async function getJson(url) {
   const r = await fetch(url, {
     headers: { accept: "application/json", "user-agent": "job-radar/1.0" },
     signal: AbortSignal.timeout(TIMEOUT_MS),
+    redirect: "error", // an allowed host must not be able to bounce us elsewhere
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
@@ -79,6 +80,7 @@ async function jobPostingFromPage(url) {
   const r = await fetch(url, {
     headers: { accept: "text/html", "user-agent": "job-radar/1.0" },
     signal: AbortSignal.timeout(TIMEOUT_MS),
+    redirect: "error", // an allowed host must not be able to bounce us elsewhere
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const html = await r.text();

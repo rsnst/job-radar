@@ -5,6 +5,8 @@ fs.mkdirSync(`${out}/vendor`, { recursive: true });
 fs.cpSync("web", out, { recursive: true }); // pages, scripts, icons/, service worker
 const dist = "node_modules/sql.js-httpvfs/dist";
 for (const f of ["index.js", "sqlite.worker.js", "sql-wasm.wasm"]) fs.copyFileSync(`${dist}/${f}`, `${out}/vendor/${f}`);
+// resume readers, self-hosted
+for (const [from, to] of [["pdfjs-dist/build/pdf.min.mjs", "pdf.min.mjs"], ["pdfjs-dist/build/pdf.worker.min.mjs", "pdf.worker.min.mjs"], ["mammoth/mammoth.browser.min.js", "mammoth.browser.min.js"]]) fs.copyFileSync(`node_modules/${from}`, `${out}/vendor/${to}`);
 fs.copyFileSync("node_modules/sql.js-httpvfs/LICENSE", `${out}/vendor/LICENSE`);
 fs.writeFileSync(`${out}/.nojekyll`, "");
 console.log(`site assembled in ${out}/`);
