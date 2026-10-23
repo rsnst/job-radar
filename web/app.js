@@ -1,5 +1,6 @@
 import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
 import { startAdminRuns, stopAdminRuns } from "./admin-runs.js";
+import { initApply, setDescriptionSource, renderApplyKit, renderTracker } from "./apply.js";
 import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved, apiFetch } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
@@ -331,7 +332,8 @@ let coLoaded = false;
 function showTab(tab) {
   S.tab = tab;
   for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
-  for (const t of ["jobs", "companies", "saved", "coverage", "admin"]) $("#tab-" + t).hidden = t !== tab;
+  for (const t of ["jobs", "companies", "saved", "applications", "coverage", "admin"]) $("#tab-" + t).hidden = t !== tab;
+  if (tab === "applications") renderTracker();
   if (tab === "saved") loadSaved();
   if (tab === "admin" && account.isAdmin) { renderAdmin(); startAdminRuns(); } else stopAdminRuns();
   if (tab === "companies" && !coLoaded && db) { coLoaded = true; loadCompanies(true); }
@@ -760,6 +762,7 @@ function openSheet(j) {
   updateSheetSave();
   renderDescription(j);
   renderFit(j);
+  renderApplyKit(j);
   $("#sheet-close").focus();
 }
 function closeSheet() {
@@ -823,6 +826,8 @@ function wire() {
   setupResumeUpload();
   $("#resume-open").addEventListener("click", showProfile);
   $("#pf-save").addEventListener("click", saveProfileDetails);
+  setDescriptionSource(() => sheetDescHtml);
+  initApply();
   document.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
     const kind = b.dataset.add;
     $(`#${ROW_LISTS[kind]}`).appendChild(profileRow(kind));
@@ -937,7 +942,7 @@ async function main() {
   }
   renderCoverage();
   syncJobControls();
-  account.onChange = () => { updateAuthUI(); refreshSaveButtons(); updateSheetSave(); if (S.tab === "saved") loadSaved(); };
+  account.onChange = () => { updateAuthUI(); refreshSaveButtons(); updateSheetSave(); if (S.tab === "saved") loadSaved(); if (S.tab === "applications") renderTracker(); };
   initAccount().then(() => { updateAuthUI(); refreshSaveButtons(); });
   wire();
   showTab(S.tab);

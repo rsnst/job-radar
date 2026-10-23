@@ -132,3 +132,12 @@ Setup (once):
 3. Redeploy. Without `GROQ_API_KEY`, the button reports that AI checks aren't set up.
 
 Free-tier notes: results are cached per user and job, so a repeat check costs nothing. Groq's free limits are shared across all users of the key; when they run out, users see a "try again later" message.
+
+
+## Application assistant (tailored materials and tracker)
+
+1. Run `supabase/applications.sql` once in the Supabase SQL editor. It creates the tracker, versioned resume and cover-letter tables, and the daily usage counter, all with row-level security.
+2. Optional: set `TAILOR_DAILY_LIMIT` in Vercel (default 10 drafts per user per day). It uses the same `GROQ_API_KEY` as the fit check.
+3. Redeploy.
+
+What it does: drafts a tailored resume and cover letter from the signed-in user's profile and resume only. Anything the posting asks for that the profile doesn't show is listed as missing, not claimed. Each saved draft is a numbered version with a line-by-line diff. The apply review lists the exact answers, attachments and destination, and records a receipt only after the user confirms they submitted the form on the employer's site. The app never submits applications itself.

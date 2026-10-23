@@ -482,3 +482,47 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 .pf-add { margin-top: 10px; }
 .profile-dialog .pf-foot { position: sticky; bottom: -1.25rem; background: var(--surface); padding: 12px 0 0; margin: 0; }
 @media (max-width: 560px) { .pf-grid { grid-template-columns: 1fr; } }
+
+/* ---------- application assistant */
+.warn-box { background: var(--warn-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: var(--radius-sm); padding: 10px 12px; margin: 10px 0; font-size: .9rem; }
+.warn-box strong { color: var(--warn); }
+.warn-box ul { margin: 6px 0; padding-left: 18px; }
+.warn-box .btn { margin-top: 4px; }
+.tabs-inline { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0 10px; }
+.tabs-inline button { all: unset; cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent; font-weight: 500; }
+.tabs-inline button[aria-selected="true"] { color: var(--accent-ink); border-color: var(--accent); }
+.tabs-inline button:focus-visible { outline: 3px solid var(--focus); border-radius: 4px; }
+.diff { font-family: var(--mono); font-size: .8rem; line-height: 1.5; max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); padding: 8px 10px; margin-bottom: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dl-add { background: var(--ok-soft); color: var(--ok); }
+.dl-del { background: var(--warn-soft); color: var(--warn); text-decoration: line-through; opacity: .85; }
+.dl-same { color: var(--muted); }
+.versions { list-style: none; padding: 0; margin: 8px 0; font-size: .88rem; display: grid; gap: 6px; }
+.versions li { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.answers { width: 100%; border-collapse: collapse; font-size: .9rem; margin-bottom: 10px; }
+.answers th, .answers td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.answers th { width: 40%; color: var(--muted); font-weight: 500; }
+.answers td { overflow-wrap: anywhere; }
+.needs { color: var(--warn); font-weight: 600; }
+.attach, .checklist { font-size: .9rem; padding-left: 18px; margin: 6px 0 12px; }
+.attach li, .checklist li { margin: 4px 0; }
+.profile-dialog details { margin: 10px 0; font-size: .9rem; }
+.profile-dialog summary { cursor: pointer; color: var(--accent-ink); font-weight: 500; }
+.ap-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 6px; }
+.chip { font: inherit; font-size: .84rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip.on, .chip:hover { border-color: var(--accent); color: var(--accent-ink); }
+.chip.on { background: var(--accent-soft); }
+.apps { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+.app { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+.app-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.app-head a { font-weight: 600; color: var(--ink); text-decoration: none; }
+.app-head a:hover { color: var(--accent-ink); text-decoration: underline; }
+.app-head .pf-field { min-width: 180px; }
+.app .receipt { margin: 8px 0 0; }
+.app .hist { display: none; font-size: .84rem; color: var(--muted); padding-left: 18px; margin: 6px 0 0; }
+.app.open .hist { display: block; }
+.app .hist li { margin: 3px 0; }
+#sheet-apply-kit .pf-field { margin: 8px 0; }
+#sheet-apply-kit textarea { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; }
+#sheet-apply-kit select { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; }
+#tab-applications .empty { padding: 28px 16px; }
+.skeleton { background: linear-gradient(90deg, var(--surface), var(--accent-soft), var(--surface)); border-radius: var(--radius-sm); }
