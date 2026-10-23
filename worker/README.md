@@ -37,3 +37,10 @@ This is the app-owned browser worker used by the Apply flow. It runs separately 
    ```
 
 The only listener is the optional inbound-mail webhook (enabled when `INBOUND_SECRET` and `INBOX_DOMAIN` are set). Logs contain run IDs and error summaries, not profile values or credentials. Workday URLs are host-checked before navigation.
+
+## Read-only probe
+
+`node src/probe.js <workday-job-url> [--deep]` opens a Workday job page and reports what the worker would recognise
+(Apply button, sign-in vs create-account form, CAPTCHA, and how each checkbox is classified). It never types,
+signs in, creates an account or submits. `--deep` only clicks "Apply" / "Apply Manually" (navigation) to reach the
+sign-up screen and stops there. It exits with a list of any non-GET requests the page made (expected: none).
