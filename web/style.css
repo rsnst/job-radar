@@ -526,3 +526,15 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 #sheet-apply-kit select { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; }
 #tab-applications .empty { padding: 28px 16px; }
 .skeleton { background: linear-gradient(90deg, var(--surface), var(--accent-soft), var(--surface)); border-radius: var(--radius-sm); }
+
+/* ---------- automation boundaries and preparation queue */
+.auto-banner { background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 10px 12px; font-size: .9rem; margin: 14px 0 0; }
+.queue { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-top: 12px; box-shadow: var(--shadow); }
+.queue-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.queue-head h3 { margin: 0; font-size: 1rem; }
+.queue .count { display: inline-block; min-width: 22px; text-align: center; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: .8rem; }
+.queue-list { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: .92rem; }
+.queue-empty { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 14px 16px; margin-top: 12px; display: grid; gap: 10px; justify-items: start; }
+.queue-empty p { margin: 0; }
+.approve { margin: 12px 0 4px; font-weight: 500; }
+.support { margin: 12px 0; }

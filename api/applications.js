@@ -1,9 +1,13 @@
 // Application tracker for the signed-in user.
 //   GET                 -> { applications: [...] }  (newest activity first)
 //   GET ?job=<key>      -> { application, docs: [...] }  (docs newest version first)
-//   PUT { job_key, job, status, notes, receipt? } -> saves status and notes, appends a history entry on change
+//   PUT { job_key, job, status, notes, receipt?, step?, note? } -> saves status and notes, appends history on change
+//        step is one of STEPS, recorded as confirmed by the user (never performed by the app)
 //   POST { job_key, kind, body, flags, source }   -> saves the next version of a resume or cover letter
 import { currentUser, restHeaders } from "../lib/supa.js";
+
+// Steps the user confirms themselves. The app records them; it never performs them.
+export const STEPS = ["account_created_by_user", "verification_waiting", "verification_done", "submitted_by_user"];
 
 export const STATUSES = ["saved", "preparing", "needs-info", "ready-for-review", "submitted", "interview", "rejected", "offer", "withdrawn"];
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -11,7 +15,7 @@ const isUrl = (v) => typeof v === "string" && /^https?:\/\//.test(v) && v.length
 
 function cleanJob(j = {}) {
   return { title: str(j.title, 200), company: str(j.company, 200), url: str(j.url, 2000), loc: str(j.loc, 200),
-    ats: str(j.ats, 40), posted: typeof j.posted === "number" ? j.posted : null, remote: j.remote === true };
+    ats: str(j.ats, 40), posted: typeof j.posted === "number" ? j.posted : null, remote: j.remote === true, pay: str(j.pay, 80) };
 }
 
 export default async function handler(req, res) {
@@ -51,6 +55,12 @@ export default async function handler(req, res) {
     const now = new Date().toISOString();
     if (!existing || existing.status !== status) {
       history.push({ at: now, from: existing?.status || null, to: status, note: str(b.note, 300) || null });
+    }
+    if (b.step !== undefined && b.step !== null && !STEPS.includes(b.step)) {
+      return res.status(400).json({ error: "That step isn't recognised." });
+    }
+    if (b.step) {
+      history.push({ at: now, to: status, step: b.step, by: "user", note: str(b.note, 300) || null });
     }
     if (b.receipt && typeof b.receipt === "object") {
       history.push({ at: now, to: status, receipt: {

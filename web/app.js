@@ -1,6 +1,6 @@
 import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
 import { startAdminRuns, stopAdminRuns } from "./admin-runs.js";
-import { initApply, setDescriptionSource, renderApplyKit, renderTracker } from "./apply.js";
+import { initApply, setDescriptionSource, setLiveDescriptionLoader, renderApplyKit, renderTracker } from "./apply.js";
 import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved, apiFetch } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
@@ -590,11 +590,20 @@ function readRows(container, kind) {
   });
 }
 
+const ARRAY_FIELDS = ["skills", "certifications", "languages", "autoApply.keywords", "autoApply.excludeKeywords", "autoApply.companies", "autoApply.excludeCompanies", "autoApply.locations"];
+const getPath = (o, path) => path.split(".").reduce((v, p) => v?.[p], o);
+function setPath(o, path, value) {
+  const parts = path.split(".");
+  let t = o;
+  for (const p of parts.slice(0, -1)) t = t[p] = t[p] || {};
+  t[parts[parts.length - 1]] = value;
+}
+
 function fillProfileForm(d) {
   for (const el of $("#profile-form").querySelectorAll("[name]")) {
-    if (TEXT_LISTS.includes(el.name)) { el.value = (d[el.name] || []).join(", "); continue; }
-    let v = d;
-    for (const p of el.name.split(".")) v = v?.[p];
+    const v = getPath(d, el.name);
+    if (el.type === "checkbox") { el.checked = v === true || (el.name === "autoApply.remoteOk" && v === undefined); continue; }
+    if (ARRAY_FIELDS.includes(el.name)) { el.value = (v || []).join(", "); continue; }
     el.value = v ?? "";
   }
   for (const kind of Object.keys(ROW_LISTS)) {
@@ -605,11 +614,10 @@ function fillProfileForm(d) {
 function readProfileForm() {
   const out = {};
   for (const el of $("#profile-form").querySelectorAll("[name]")) {
-    if (TEXT_LISTS.includes(el.name)) { out[el.name] = el.value.split(","); continue; }
-    const parts = el.name.split(".");
-    let o = out;
-    for (const p of parts.slice(0, -1)) o = o[p] = o[p] || {};
-    o[parts[parts.length - 1]] = el.value.trim();
+    if (el.type === "checkbox") { setPath(out, el.name, el.checked); continue; }
+    if (el.name === "autoApply.minSalary") { setPath(out, el.name, Number(el.value) || 0); continue; }
+    if (ARRAY_FIELDS.includes(el.name)) { setPath(out, el.name, el.value.split(",")); continue; }
+    setPath(out, el.name, el.value.trim());
   }
   for (const kind of Object.keys(ROW_LISTS)) {
     out[ROW_DATA[kind]] = readRows($(`#${ROW_LISTS[kind]}`), kind);
@@ -827,6 +835,7 @@ function wire() {
   $("#resume-open").addEventListener("click", showProfile);
   $("#pf-save").addEventListener("click", saveProfileDetails);
   setDescriptionSource(() => sheetDescHtml);
+  setLiveDescriptionLoader((url) => liveDescription(url));
   initApply();
   document.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
     const kind = b.dataset.add;
