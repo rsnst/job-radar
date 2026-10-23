@@ -2,7 +2,7 @@
 // Nothing here submits an application. The applicant opens the employer's page, submits it there, and records it here.
 // Demo jobs (demo:// addresses) run against a mock application page inside this app with synthetic data.
 import { account } from "./account.js";
-import { DEMO_JOB, FIELDS, applyAnswers, draftSource, getPath, isDemoJob, missingRequired, STEP_LABEL, supportText } from "./flow-model.js";
+import { DEMO_JOB, FIELDS, applyAnswers, draftSource, getPath, isDemoJob, missingRequired, reviewBlockers, STEP_LABEL, supportText } from "./flow-model.js";
 import { getApplication, saveStatus, saveDoc, draftFor, loadProfile, saveProfile, postingHtml, resetDemo } from "./store.js";
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -251,19 +251,26 @@ function answersStep() {
     ${nav({ next: "account", nextDisabled: blanks.length > 0, nextLabel: "Continue to account setup" })}`;
 }
 
-// Step 3: account and verification. The app records what the applicant confirms and does nothing else.
+// Step 3: account and verification. Everything here happens outside the app, in the applicant's own browser and inbox.
+// The app records what the applicant says they did. It checks nothing and does none of these steps.
 function accountStep() {
   const hist = st.app.application?.history || [];
   const done = hist.filter((h) => h.step).map((h) => `<li>${esc(fmtDate(h.at))} · ${esc(STEP_LABEL[h.step] || h.step)}</li>`).join("");
   return `<p class="note">${esc(supportText(st.job.ats))}</p>
-    <p class="note">The app doesn't create accounts, choose passwords, read your email, or enter verification codes. Use your own password manager, and record each step here after you finish it.</p>
+    <div class="warn-box"><strong>Who does what</strong>
+      <ul>
+        <li><strong>You:</strong> create any account and choose its password, read the verification email, enter any code, and solve any CAPTCHA.</li>
+        <li><strong>The app:</strong> none of those. It doesn't create accounts, read your email, or verify anything.</li>
+        <li><strong>Recording:</strong> the buttons below only save your own note of what you did. They don't check it.</li>
+      </ul></div>
+    <h3>Record what you did</h3>
     <div class="sheet-actions">
-      <button type="button" class="btn" data-act="step" data-step="account_created_by_user">I created my account</button>
-      <button type="button" class="btn" data-act="step" data-step="verification_waiting">Waiting for verification email</button>
-      <button type="button" class="btn" data-act="step" data-step="verification_done">I verified my email</button>
+      <button type="button" class="btn" data-act="step" data-step="account_created_by_user">Record: I created my account</button>
+      <button type="button" class="btn" data-act="step" data-step="verification_waiting">Record: waiting for verification email</button>
+      <button type="button" class="btn" data-act="step" data-step="verification_done">Record: I verified my email</button>
     </div>
-    <h3>Recorded</h3>
-    ${done ? `<ul class="hist">${done}</ul>` : `<p class="note">Nothing recorded yet.</p>`}
+    <h3>Your recorded status</h3>
+    ${done ? `<ul class="hist">${done}</ul>` : `<p class="note">You haven't recorded any account steps yet.</p>`}
     <p id="flow-msg" class="note" role="status"></p>
     ${nav({ next: "review" })}`;
 }
@@ -271,9 +278,11 @@ function accountStep() {
 // Step 4: everything that goes to the employer, then the one explicit open action.
 function reviewStep() {
   const p = st.profile || {};
-  const blanks = missingRequired(p);
-  const resume = (st.app.docs || []).find((x) => x.kind === "resume");
-  const cover = (st.app.docs || []).find((x) => x.kind === "cover");
+  const docs = st.app.docs || [];
+  const resume = docs.find((x) => x.kind === "resume");
+  const cover = docs.find((x) => x.kind === "cover");
+  const blockers = reviewBlockers({ profile: p, resumeSaved: !!resume });
+  const blocked = blockers.length > 0;
   const destination = st.demo ? "Demo mock application (no real destination)" : st.job.url;
   const answers = FIELDS.map((f) => {
     const v = getPath(p, f.path);
@@ -282,32 +291,43 @@ function reviewStep() {
   const custom = (p.custom || []).map((q) => `<tr><th scope="row">${esc(q.question)}</th><td>${esc(q.answer)}</td></tr>`).join("");
   const receipt = st.receipt
     ? `<div class="receipt-box" role="status"><strong>${st.demo ? "Demo receipt" : "Receipt recorded"}</strong>
-        <p class="note">Submitted ${esc(fmtDate(st.receipt.at))} · resume v${st.receipt.resume_version ?? "none"} · cover letter v${st.receipt.cover_version ?? "none"}${st.demo ? " · demo only, nothing was sent" : ""}</p></div>` : "";
+        <p class="note">You recorded this submission ${esc(fmtDate(st.receipt.at))} · resume v${st.receipt.resume_version ?? "none"} · cover letter ${st.receipt.cover_version ? "v" + st.receipt.cover_version : "not used"}${st.demo ? " · demo only, nothing was sent" : ""}</p></div>` : "";
+  const blockerBox = blocked
+    ? `<div class="warn-box" role="alert"><strong>Before you can open the employer's form:</strong><ul>${blockers.map((b) =>
+        `<li>${esc(b.text)} <button type="button" class="link" data-act="go" data-step="${b.step}">${b.step === "materials" ? "Go to Materials" : "Go to answers"}</button></li>`).join("")}</ul></div>`
+    : "";
   return `${receipt}
     <dl class="facts"><div><dt>Destination</dt><dd>${esc(destination)}</dd></div><div><dt>Role</dt><dd>${esc(st.job.title)} · ${esc(st.job.company)}</dd></div></dl>
-    <h3>Attachments</h3>
+    ${blockerBox}
+    <h3>What the app drafted</h3>
     <ul class="attach">
-      <li>${resume ? `Resume v${resume.version} (tailored)` : "No tailored resume saved. Upload your own on the employer's site, or go back to Materials."}</li>
-      <li>${cover ? `Cover letter v${cover.version}` : "No cover letter saved yet."}</li>
+      <li>${resume
+        ? `Resume v${resume.version}: drafted by the app${resume.source === "edited" ? ", then edited by you" : ""}. Saved in your tracker.`
+        : `<span class="needs">No tailored resume saved.</span> Save one in Materials before you can open the form.`}</li>
+      <li>Cover letter (optional): ${cover
+        ? `v${cover.version}, drafted by the app${cover.source === "edited" ? " and edited by you" : ""}.`
+        : "not saved. Skip it unless the form asks for one."}</li>
     </ul>
     <h3>Your answers</h3>
     <table class="answers"><tbody>${answers}${custom}</tbody></table>
-    ${blanks.length ? `<p class="warn-box">Still needed before you can approve: ${esc(blanks.join(", "))}. <button type="button" class="link" data-act="go" data-step="answers">Answer them</button></p>` : ""}
-    <h3>Before you open the employer's page</h3>
+    <h3>What you do on the employer's site</h3>
+    <p class="note">The app does none of these. You do them yourself, on the employer's site.</p>
     <ul class="checklist">
       <li>Create or sign in to an account, if the site asks.</li>
-      <li>Solve any CAPTCHA or security check, and enter any code from email yourself.</li>
+      <li>Solve any CAPTCHA or security check, and enter any code from email.</li>
       <li>Upload the resume file, and answer any question not listed above.</li>
-      <li>Read the terms and tick consent boxes yourself. Press the final submit button yourself.</li>
+      <li>Read the terms and tick consent boxes. Press the final submit button.</li>
     </ul>
-    <label class="pf-check wide approve"><input type="checkbox" id="flow-approve" data-act="approve" ${st.approved ? "checked" : ""} ${blanks.length ? "disabled" : ""}>
-      I've checked every answer and attachment above, and they're accurate.</label>
+    <label class="pf-check wide approve"><input type="checkbox" id="flow-approve" data-act="approve" ${st.approved ? "checked" : ""} ${blocked ? "disabled" : ""}>
+      I've checked the answers and attachments above, and they're accurate. I understand the app submits nothing.</label>
     <div class="sheet-actions">
-      <button type="button" class="btn primary" data-act="open" ${st.approved ? "" : "disabled"}>${st.demo ? "Open mock application" : "Open employer application"}</button>
+      <button type="button" class="btn primary" data-act="open" ${st.approved && !blocked ? "" : "disabled"}>${st.demo ? "Open mock application" : "Open employer application"}</button>
       <button type="button" class="btn" data-act="copy">Copy my answers</button>
-      <button type="button" class="btn" data-act="submitted" ${st.approved && st.opened && !st.receipt ? "" : "disabled"}>${st.demo ? "Record demo submission" : "I submitted it"}</button>
+      <button type="button" class="btn" data-act="submitted" ${st.approved && st.opened && !st.receipt ? "" : "disabled"}>${st.demo ? "Record demo submission" : "Record: I submitted it"}</button>
     </div>
-    <p class="note">${st.opened ? "Opened. Submit the form there yourself, then come back and record it here." : "Nothing is sent until you submit the form on the employer's site."}</p>
+    <p class="note">${st.opened
+      ? "Opened in a new tab. Submit the form there yourself, then come back and record it here."
+      : "Opening the form sends you to the employer's site in a new tab. Nothing is sent by this app."}</p>
     <p id="flow-msg" class="note" role="status"></p>
     ${nav({})}`;
 }
@@ -441,6 +461,9 @@ async function recordStep(step) {
 }
 
 function openEmployer() {
+  const docs = st.app.docs || [];
+  const blockers = reviewBlockers({ profile: st.profile || {}, resumeSaved: docs.some((x) => x.kind === "resume") });
+  if (blockers.length) return msg("Fix the items above first.");
   if (st.demo) { st.mock = true; st.opened = true; return render(); }
   if (!/^https?:\/\//.test(st.job.url)) return msg("This posting has no employer link to open.");
   window.open(st.job.url, "_blank", "noopener");

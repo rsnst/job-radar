@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import * as model from "../web/flow-model.js";
 import * as store from "../web/store.js";
 
-const { DEMO_JOB, DEMO_PROFILE, FIELDS, applyAnswers, buildDemoDraft, draftSource, getPath, isDemoJob, missingRequired, setPath } = model;
+const { DEMO_JOB, DEMO_PROFILE, FIELDS, STEP_LABEL, applyAnswers, buildDemoDraft, draftSource, getPath, isDemoJob, missingRequired, reviewBlockers, setPath } = model;
 
 test("setPath returns a new object and leaves the input unchanged", () => {
   const a = { work: { authorizedUS: "yes" } };
@@ -101,4 +101,28 @@ test("draft source: the employer's text wins, pasted text is used only without i
   assert.deepEqual(draftSource({ posting: "", pasted: "<p>Pasted  text</p>" }), { text: "Pasted text", source: "pasted" });
   assert.deepEqual(draftSource({ posting: "  ", pasted: "   " }), { text: "", source: "" });
   assert.deepEqual(draftSource({}), { text: "", source: "" });
+});
+
+test("review is blocked until a tailored resume version is saved, and the blocker points to Materials", () => {
+  const b = reviewBlockers({ profile: DEMO_PROFILE, resumeSaved: false });
+  assert.equal(b.length, 2, "missing answer and missing resume");
+  assert.ok(b.some((x) => x.step === "materials" && /resume/i.test(x.text)));
+  assert.deepEqual(reviewBlockers({ profile: applyAnswers(DEMO_PROFILE, { "work.needsSponsorship": "no" }), resumeSaved: false })
+    .map((x) => x.step), ["materials"]);
+});
+
+test("review has no blockers once answers are complete and a resume is saved", () => {
+  const ready = applyAnswers(DEMO_PROFILE, { "work.needsSponsorship": "no" });
+  assert.deepEqual(reviewBlockers({ profile: ready, resumeSaved: true }), []);
+});
+
+test("the cover letter is never a blocker", () => {
+  const ready = applyAnswers(DEMO_PROFILE, { "work.needsSponsorship": "no" });
+  assert.deepEqual(reviewBlockers({ profile: ready, resumeSaved: true }), [], "no cover letter saved and nothing blocks");
+});
+
+test("step labels say the applicant recorded the step, never that the app did it", () => {
+  for (const label of Object.values(STEP_LABEL)) {
+    assert.ok(label.startsWith("You recorded:"), label);
+  }
 });
