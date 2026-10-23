@@ -121,3 +121,14 @@ The data stays on GitHub Pages. Vercel serves the UI and proxies `/db/*` and `me
 If the GitHub repo name is different from `rsnst/job-radar`, edit the two `destination` URLs in `vercel.json`.
 
 Without the Supabase variables, the site still works as a public search. Sign-in and Save are hidden.
+
+## AI fit check and resume profile
+
+Signed-in users paste their resume once (**My resume**), then **Check my fit** on any job with a description. The result shows a 0–100 score, what matches, what's missing, and quotes from the posting. Quotes that don't appear in the posting are dropped.
+
+Setup (once):
+1. In the Supabase SQL editor, run `supabase/ai.sql`. It creates `profiles`, `fit_cache` and `fit_usage`, each readable and writable only by its owner.
+2. In Vercel → Environment Variables, add `GROQ_API_KEY` (free key from Groq, no card needed). Optional: `GROQ_MODEL` (default `llama-3.3-70b-versatile`) and `FIT_DAILY_LIMIT` (default 5 checks per user per day).
+3. Redeploy. Without `GROQ_API_KEY`, the button reports that AI checks aren't set up.
+
+Free-tier notes: results are cached per user and job, so a repeat check costs nothing. Groq's free limits are shared across all users of the key; when they run out, users see a "try again later" message.

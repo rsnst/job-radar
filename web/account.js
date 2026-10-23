@@ -119,3 +119,13 @@ export async function accessToken() {
   const { data } = await sb.auth.getSession();
   return data.session?.access_token ?? null;
 }
+
+// Calls to our own API functions, with the signed-in user's token.
+export async function apiFetch(path, opts = {}) {
+  const token = await accessToken();
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const r = await fetch(path, { ...opts, headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
