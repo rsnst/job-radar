@@ -3,6 +3,7 @@
 // CHAT_DAILY_LIMIT messages a day (default 30). Only the job open on screen and, if the user
 // ticks the box, their resume are sent to the model.
 import { currentUser, restHeaders } from "../lib/supa.js";
+import { useQuota, refundQuota } from "../lib/quota.js";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const DAILY = Number(process.env.CHAT_DAILY_LIMIT || 30);
@@ -39,12 +40,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Send a question first." });
   }
 
-  // daily allowance
-  const day = new Date().toISOString().slice(0, 10);
-  const ur = await fetch(`${ctx.url}/rest/v1/chat_usage?select=n&user_id=eq.${ctx.id}&day=eq.${day}`, { headers: restHeaders(ctx) });
-  if (!ur.ok) return res.status(502).json({ error: "Couldn't check your limit. Try again." });
-  const [usage] = await ur.json();
-  if ((usage?.n || 0) >= DAILY) return res.status(429).json({ error: `You've used today's ${DAILY} messages. Try again tomorrow.` });
+  // daily allowance, counted atomically by the database
+  const q = await useQuota(ctx, "chat", DAILY);
+  if (!q.ok) return res.status(502).json({ error: "Couldn't check your limit. Try again." });
+  if (!q.allowed) return res.status(429).json({ error: `You've used today's ${DAILY} messages. Try again tomorrow.` });
 
   let system = BASE;
   const jobText = plain(req.body?.description).slice(0, JOB_CHARS);
@@ -63,19 +62,10 @@ export default async function handler(req, res) {
     body: JSON.stringify({ model: MODEL, temperature: 0.4, max_tokens: 600,
       messages: [{ role: "system", content: system }, ...clean] }),
   });
-  if (r.status === 429) return res.status(429).json({ error: "The free AI limit is used up for today. Try again later." });
-  if (!r.ok) return res.status(502).json({ error: "The assistant didn't answer. Try again in a moment." });
+  if (r.status === 429) { await refundQuota(ctx, "chat"); return res.status(429).json({ error: "The free AI limit is used up for today. Try again later." }); }
+  if (!r.ok) { await refundQuota(ctx, "chat"); return res.status(502).json({ error: "The assistant didn't answer. Try again in a moment." }); }
   const data = await r.json();
   const reply = String(data.choices?.[0]?.message?.content || "").trim() || "I couldn't write an answer. Try rephrasing.";
 
-  if (usage) {
-    await fetch(`${ctx.url}/rest/v1/chat_usage?user_id=eq.${ctx.id}&day=eq.${day}`, {
-      method: "PATCH", headers: restHeaders(ctx, { Prefer: "return=minimal" }), body: JSON.stringify({ n: usage.n + 1 }),
-    });
-  } else {
-    await fetch(`${ctx.url}/rest/v1/chat_usage`, {
-      method: "POST", headers: restHeaders(ctx, { Prefer: "return=minimal" }), body: JSON.stringify({ user_id: ctx.id, day, n: 1 }),
-    });
-  }
   return res.status(200).json({ reply });
 }

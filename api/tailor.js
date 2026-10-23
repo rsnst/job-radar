@@ -3,6 +3,7 @@
 // saves a version with /api/applications. Uses Groq's free API (GROQ_API_KEY) with TAILOR_DAILY_LIMIT
 // new drafts per user per day (default 10).
 import { currentUser, restHeaders } from "../lib/supa.js";
+import { useQuota, refundQuota } from "../lib/quota.js";
 import { SYSTEM_PROMPT, buildUserMessage, verifyAgainst, parseMaterials, profileGaps, minimalProfile } from "../lib/tailor.js";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
@@ -63,32 +64,22 @@ export default async function handler(req, res) {
     return res.status(409).json({ error: "Add your profile and resume first.", needsProfile: true, gaps });
   }
 
-  const day = new Date().toISOString().slice(0, 10);
-  const ur = await fetch(`${ctx.url}/rest/v1/tailor_usage?select=n&user_id=eq.${ctx.id}&day=eq.${day}`, { headers: restHeaders(ctx) });
-  if (!ur.ok) return res.status(502).json({ error: "Couldn't check your daily limit. Try again." });
-  const [usage] = await ur.json();
-  if ((usage?.n || 0) >= DAILY) return res.status(429).json({ error: `You've used today's ${DAILY} drafts. Try again tomorrow.` });
+  const q = await useQuota(ctx, "tailor", DAILY);
+  if (!q.ok) return res.status(502).json({ error: "Couldn't check your daily limit. Try again." });
+  if (!q.allowed) return res.status(429).json({ error: `You've used today's ${DAILY} drafts. Try again tomorrow.` });
 
   let materials;
   try {
     materials = parseMaterials(await askGroq(source, job));
   } catch (e) {
+    await refundQuota(ctx, "tailor");
     if (e.status === 429) return res.status(429).json({ error: "The free AI limit is used up for today. Try again later." });
     return res.status(502).json({ error: "The drafting service didn't answer. Try again in a moment." });
   }
-  if (!materials) return res.status(502).json({ error: "The draft came back incomplete. Try again." });
+  if (!materials) { await refundQuota(ctx, "tailor"); return res.status(502).json({ error: "The draft came back incomplete. Try again." }); }
 
   const flags = verifyAgainst({ source: `${JSON.stringify(profileForModel)}\n${resumeText}`, job, output: `${materials.resume}\n${materials.cover}` });
 
-  if (usage) {
-    await fetch(`${ctx.url}/rest/v1/tailor_usage?user_id=eq.${ctx.id}&day=eq.${day}`, {
-      method: "PATCH", headers: restHeaders(ctx, { Prefer: "return=minimal" }), body: JSON.stringify({ n: usage.n + 1 }),
-    });
-  } else {
-    await fetch(`${ctx.url}/rest/v1/tailor_usage`, {
-      method: "POST", headers: restHeaders(ctx, { Prefer: "return=minimal" }), body: JSON.stringify({ user_id: ctx.id, day, n: 1 }),
-    });
-  }
   return res.status(200).json({
     resume: materials.resume,
     cover: materials.cover,

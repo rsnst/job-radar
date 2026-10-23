@@ -7,6 +7,8 @@
     "build": "node scripts/vendor.mjs site && node scripts/write-config.mjs site"
   },
   "dependencies": {
+    "mammoth": "1.13.0",
+    "pdfjs-dist": "4.10.38",
     "sql.js-httpvfs": "0.8.12"
   }
 }

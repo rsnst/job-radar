@@ -703,10 +703,11 @@ async function saveProfile(text) {
 
 // Resume files are read in the browser; the server only stores the resulting text.
 const RESUME_MAX_BYTES = 5 * 1024 * 1024;
+// Self-hosted (copied into vendor/ at build time), so no third-party script runs on a page that handles resumes.
 const RESUME_LIBS = {
-  pdf: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
-  pdfWorker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
-  docx: "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js",
+  pdf: "./vendor/pdf.min.mjs",
+  pdfWorker: "./vendor/pdf.worker.min.mjs",
+  docx: "./vendor/mammoth.browser.min.js",
 };
 const loadedLibs = {};
 function loadScript(src) {
@@ -720,9 +721,10 @@ function loadScript(src) {
 }
 
 async function textFromPdf(file) {
-  await loadScript(RESUME_LIBS.pdf);
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = RESUME_LIBS.pdfWorker;
-  const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pdfjs = await import(RESUME_LIBS.pdf);
+  pdfjs.GlobalWorkerOptions.workerSrc = RESUME_LIBS.pdfWorker;
+  // isEvalSupported:false is the documented hardening against script execution from a crafted PDF.
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false }).promise;
   const pages = [];
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
