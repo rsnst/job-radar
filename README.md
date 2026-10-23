@@ -128,7 +128,7 @@ Signed-in users paste their resume once (**My resume**), then **Check my fit** o
 
 Setup (once):
 1. In the Supabase SQL editor, run `supabase/ai.sql`. It creates `profiles`, `fit_cache` and `fit_usage`, each readable and writable only by its owner.
-2. In Vercel → Environment Variables, add `GROQ_API_KEY` (free key from Groq, no card needed). Optional: `GROQ_MODEL` (default `llama-3.3-70b-versatile`) and `FIT_DAILY_LIMIT` (default 5 checks per user per day).
+2. In Vercel → Environment Variables, add `GROQ_API_KEY` (free key from Groq, no card needed). Optional: `GROQ_MODEL` (default `openai/gpt-oss-120b`) and `FIT_DAILY_LIMIT` (default 5 checks per user per day).
 3. Redeploy. Without `GROQ_API_KEY`, the button reports that AI checks aren't set up.
 
 Free-tier notes: results are cached per user and job, so a repeat check costs nothing. Groq's free limits are shared across all users of the key; when they run out, users see a "try again later" message.

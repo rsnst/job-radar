@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { currentUser, restHeaders } from "../lib/supa.js";
 
-const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const DAILY = Number(process.env.FIT_DAILY_LIMIT || 5);
 const JOB_CHARS = 8000;
 const RESUME_CHARS = 8000;
