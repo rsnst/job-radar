@@ -43,3 +43,10 @@ test("account creation and unattended submission are separate opt-ins that defau
   assert.equal(cleanAutoApply({ createAccounts: true }).createAccounts, true);
   assert.equal(cleanAutoApply({ createAccounts: true }).autoSubmit, false);
 });
+
+test("accepting account terms is its own opt-in and needs createAccounts", () => {
+  assert.equal(cleanAutoApply({}).acceptAccountTerms, false);
+  assert.equal(cleanAutoApply({ acceptAccountTerms: true }).acceptAccountTerms, false);
+  assert.equal(cleanAutoApply({ createAccounts: true, acceptAccountTerms: true }).acceptAccountTerms, true);
+  assert.equal(cleanAutoApply({ createAccounts: true, acceptAccountTerms: "yes" }).acceptAccountTerms, false);
+});

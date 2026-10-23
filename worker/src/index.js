@@ -57,7 +57,7 @@ async function userData(run) {
     rest(`profiles?select=text&user_id=eq.${uid}&limit=1`),
     rest(`application_docs?select=body,version,kind&user_id=eq.${uid}&job_key=eq.${key}&kind=eq.resume&order=version.desc&limit=1`),
   ]);
-  return { profile: cleanProfile(profiles[0]?.data), settings: { createAccounts: profiles[0]?.data?.autoApply?.createAccounts === true }, sourceResume: resumes[0]?.text || "", resume: docs[0]?.body || "", resumeVersion: docs[0]?.version || null };
+  return { profile: cleanProfile(profiles[0]?.data), settings: { createAccounts: profiles[0]?.data?.autoApply?.createAccounts === true, acceptAccountTerms: profiles[0]?.data?.autoApply?.createAccounts === true && profiles[0]?.data?.autoApply?.acceptAccountTerms === true }, sourceResume: resumes[0]?.text || "", resume: docs[0]?.body || "", resumeVersion: docs[0]?.version || null };
 }
 
 async function waitForDecision(run, page) {
@@ -103,7 +103,7 @@ export async function processRun(run) {
       await setRun(run, { status: "needs_user", stage: "security-check", message: "Workday presented a CAPTCHA or security check. Complete it manually and start a new run." });
       return;
     }
-    const acctCtx = { run, rest, key: loadKey(), domain: process.env.INBOX_DOMAIN || "", settings: data.settings,
+    const acctCtx = { run, rest, key: loadKey(), domain: process.env.INBOX_DOMAIN || "", settings: data.settings, acceptedTerms: [],
       verifyMs: Number(process.env.VERIFY_WAIT_MS) || 120_000, verifyPollMs: Number(process.env.VERIFY_POLL_MS) || 3000 };
     const acct0 = await handleAccount(page, acctCtx);
     if (acct0) { await setRun(run, acct0.stop); return; }
@@ -142,7 +142,7 @@ export async function processRun(run) {
         const blockers = [...allMissing];
         const checkboxes = page.locator('input[type="checkbox"]:visible');
         if (await checkboxes.count()) blockers.push("Review required consent or declaration checkboxes on the employer form.");
-        const resultSummary = { filled_fields: allFilled, missing_fields: [...new Set(blockers)], resume_version: data.resumeVersion };
+        const resultSummary = { filled_fields: allFilled, missing_fields: [...new Set(blockers)], resume_version: data.resumeVersion, ...(acctCtx.acceptedTerms.length ? { accepted_terms: acctCtx.acceptedTerms } : {}) };
         if (blockers.length) {
           await setRun(run, { status: "needs_user", stage: "missing-answers", message: "Some required answers or consent choices need your input. Nothing was submitted.", result: resultSummary });
           return;

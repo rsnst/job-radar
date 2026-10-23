@@ -233,6 +233,7 @@
       <p class="note"><strong>Job matching and application mode.</strong> Matching saved jobs can be prepared for the application worker. Account creation and hands-free submission are separate opt-ins, both off by default. The worker always stops for CAPTCHAs and security checks, legal attestations, missing answers and unsupported forms.</p>
       <label class="pf-check wide"><input type="checkbox" name="autoApply.enabled"> Use these criteria to build my preparation queue</label>
       <label class="pf-check wide"><input type="checkbox" name="autoApply.createAccounts"> Create employer accounts for me when a Workday application requires one (uses a Job Compass address; the password is stored encrypted)</label>
+      <label class="pf-check wide"><input type="checkbox" name="autoApply.acceptAccountTerms"> Also accept the employer’s account terms and privacy notice on sign-up forms for me (only that one box; any other legal question still stops for you, and every acceptance is listed on the run)</label>
       <label class="pf-check wide"><input type="checkbox" name="autoApply.autoSubmit"> Submit without waiting for my review when all required answers are verified</label>
       <div id="employer-accounts" class="pf-list" aria-live="polite"></div>
       <div class="pf-grid">

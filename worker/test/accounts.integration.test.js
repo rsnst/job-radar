@@ -62,7 +62,7 @@ function workdayHtml({ mode, captcha, accountTerms }) {
     <label>Email <input type="email" name="email" aria-label="Email"></label>
     <label>Password <input type="password" aria-label="Password"></label>
     <label>Verify New Password <input type="password" aria-label="Verify New Password"></label>
-    ${accountTerms ? '<label><input type="checkbox" id="terms"> I agree to the terms and privacy notice</label>' : ""}
+    ${accountTerms ? `<label><input type="checkbox" id="terms"> ${accountTerms === true ? "I agree to the terms and privacy notice" : accountTerms}</label>` : ""}
     <button type="button" id="mk">Create Account</button>
   </div>
   <div id="verify" hidden><p>Enter the verification code we emailed you.</p>
@@ -177,12 +177,12 @@ test("opt-in: creates an alias account, stores the password encrypted, verifies 
   assert.ok(h.state.run.result.filled_fields.some((x) => x.value === "Jordan"));
 });
 
-test("employer terms are never accepted automatically", async (t) => {
+test("employer terms are not accepted without the separate opt-in", async (t) => {
   const h = await harness(t);
   await h.go("", { auto_submit: true });
   assert.equal(h.state.run.status, "needs_user");
   assert.equal(h.state.run.stage, "account-terms");
-  assert.match(h.state.run.message, /Review the employer's terms/);
+  assert.match(h.state.run.message, /requires accepting the employer's terms/);
   assert.deepEqual(h.db.tables.employer_accounts, []);
   assert.deepEqual(h.db.tables.mail_aliases, []);
   assert.equal(h.seen.created, null);
@@ -230,4 +230,29 @@ test("mail from a non-Workday sender is ignored", async (t) => {
   await h.go("", { auto_submit: true });
   assert.equal(h.state.run.stage, "email-verification");
   assert.deepEqual(h.db.tables.inbound_mail, []);
+});
+
+test("with the separate opt-in the plain terms box is ticked, and the acceptance is listed on the run", async (t) => {
+  const h = await harness(t, { autoApply: { createAccounts: true, acceptAccountTerms: true } });
+  await h.go("", { auto_submit: true });
+  assert.equal(h.state.run.status, "submitted", JSON.stringify(h.state.run));
+  assert.match(h.state.run.result.accepted_terms?.[0] || "", /terms and privacy notice/);
+  assert.equal(h.db.tables.employer_accounts.length, 1);
+});
+
+test("acceptAccountTerms alone (without createAccounts) does nothing", async (t) => {
+  const h = await harness(t, { autoApply: { createAccounts: false, acceptAccountTerms: true } });
+  await h.go("", { auto_submit: true });
+  assert.equal(h.state.run.stage, "account");
+  assert.deepEqual(h.db.tables.employer_accounts, []);
+});
+
+test("even when opted in, certifications, declarations and marketing consent always stop for the user", async (t) => {
+  for (const label of ["I certify that the information I provide is true", "I authorize a background check", "I agree to the terms and also consent to marketing emails", "I declare I am not a veteran"]) {
+    const h = await harness(t, { autoApply: { createAccounts: true, acceptAccountTerms: true }, accountTerms: label });
+    await h.go("", { auto_submit: true });
+    assert.equal(h.state.run.status, "needs_user", label);
+    assert.equal(h.state.run.stage, "account-legal", label);
+    assert.deepEqual(h.db.tables.employer_accounts, [], label);
+  }
 });

@@ -44,6 +44,10 @@ Any other employer site is treated as **manual only**.
 - Automation never bypasses CAPTCHA, bot checks, rate limits, legal attestations, or identity verification. Those always stop with the user.
 - Before any additional pre-fill is enabled for another platform, it needs: a documented terms review, a per-application preview that the user approves, and rate limits that respect the platform.
 
+## Employer terms on sign-up
+
+Creating an account and accepting the employer's account terms are two separate opt-ins in My profile, both off by default. With only account creation on, the worker stops at a sign-up form that has a terms box ("account-terms"). With "Accept the employer's account terms for me" also on, it ticks only a plain terms / privacy-notice box on that sign-up form and lists the label on the run (`accepted_terms`). Certifications, authorizations, declarations, background-check or EEO questions, and marketing or text-message consent are never ticked: the run stops ("account-legal") and you finish the sign-up yourself.
+
 ## Email verification
 
 The worker never connects to a user's Gmail or any personal inbox. When the user opts in to account creation, the worker signs up with a per-user Job Compass address (`jc-<token>@INBOX_DOMAIN`). An inbound-mail webhook on the worker receives mail for that address, accepts only Workday senders, and keeps just the extracted one-time code or `https` Workday verification link (never the message body), which expires after 30 minutes and is cleared once used. If the mail does not arrive in time, the run stops with "email-verification" for the user to finish.

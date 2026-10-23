@@ -3,6 +3,7 @@
 
 export const DEFAULT_AUTOAPPLY = {
   enabled: false,
+  acceptAccountTerms: false, // separate opt-in (needs createAccounts): tick the plain terms/privacy box on an employer sign-up form
   createAccounts: false,   // opt in to the worker creating employer accounts (alias address, encrypted password)
   autoSubmit: false,       // opt in to the worker submitting after all required fields are verified
   keywords: [],          // a job title must contain at least one of these (case-insensitive). Empty = any title.
@@ -24,6 +25,7 @@ export function cleanAutoApply(input = {}) {
   return {
     enabled: d.enabled === true,
     createAccounts: d.createAccounts === true,
+    acceptAccountTerms: d.createAccounts === true && d.acceptAccountTerms === true,
     autoSubmit: d.autoSubmit === true,
     keywords: list(d.keywords), excludeKeywords: list(d.excludeKeywords),
     companies: list(d.companies), excludeCompanies: list(d.excludeCompanies),

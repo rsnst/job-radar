@@ -7,6 +7,7 @@ This is the app-owned browser worker used by the Apply flow. It runs separately 
 - Workday links on `*.myworkdayjobs.com` and `*.myworkday.com` only.
 - Account creation, sign-in and email verification are opt-in (My profile → “Create employer accounts for me”). Without the opt-in, or without the settings below, the worker stops at the account page.
 - Verified only against mock pages in `worker/test/`. Real Workday tenants vary; expect to adjust selectors after a supervised first run.
+- A terms box on an account sign-up stops the run unless the user also turned on "Accept the employer's account terms for me"; that opt-in ticks only a plain terms/privacy box and records it on the run. Other legal checkboxes always stop.
 - CAPTCHA/security checks, required checkboxes/attestations, and unknown required answers stop the run. It does not bypass them or guess.
 - The worker keeps the browser session open while an application awaits approval. Run one worker instance per deployment; if the process restarts, the user may need to retry the run.
 - Do not expose the Supabase service-role key to the browser or frontend.
