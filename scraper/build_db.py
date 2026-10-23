@@ -36,7 +36,8 @@ PRAGMA synchronous = OFF;
 CREATE TABLE boards(id INTEGER PRIMARY KEY, company TEXT, ats TEXT, url TEXT, evidence TEXT,
                     status TEXT, jobs INTEGER);
 CREATE TABLE jobs(id INTEGER PRIMARY KEY, board INTEGER, company TEXT, ats TEXT, title TEXT, loc TEXT,
-                  state TEXT, remote INTEGER, us INTEGER, posted INTEGER, seen INTEGER, url TEXT, pay TEXT);
+                  state TEXT, remote INTEGER, us INTEGER, posted INTEGER, seen INTEGER, url TEXT, pay TEXT,
+                  pd INTEGER);  -- pd=1: posted is the employer's date; 0: it's our first-seen day
 -- one row per job that has a description; the HTML is zlib-compressed (the web app inflates it)
 CREATE TABLE job_details(job_id INTEGER PRIMARY KEY, body BLOB);
 """ % PAGE
@@ -281,13 +282,14 @@ def _build(in_dir, site, state_dir, today, td, boards_path, store):
     for b in boards:
         for j in jobs_by_url.get(b["board_url"], []):
             posted = day_of(j.get("d"))
-            if posted is None or posted > td:
+            real = posted is not None and posted <= td
+            if not real:
                 posted = j["f"]
             if posted < td - SHOW_DAYS:
                 continue
             per_board[b["id"]] += 1
             rows.append((b["id"], b["company"], b["ats"], j["t"], j["l"], j["s"], j["r"], j["u"],
-                         posted, j["f"], j["url"], j.get("p"), store.blob(j["url"])))
+                         posted, j["f"], j["url"], j.get("p"), store.blob(j["url"]), int(real)))
     rows.sort(key=lambda r: (-r[8], -r[9], r[1]))
     _log(f"built {len(rows)} rows")
 
@@ -313,8 +315,8 @@ def _build(in_dir, site, state_dir, today, td, boards_path, store):
 
     _log("writing database")
     con.executemany("INSERT INTO boards VALUES (?,?,?,?,?,?,?)", board_rows)
-    con.executemany("INSERT INTO jobs(board,company,ats,title,loc,state,remote,us,posted,seen,url,pay) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [r[:12] for r in rows])
+    con.executemany("INSERT INTO jobs(board,company,ats,title,loc,state,remote,us,posted,seen,url,pay,pd) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", [(*r[:12], r[13]) for r in rows])
     # rowids are 1..n in insertion order, so a job's id is its position in `rows`
     con.executemany("INSERT INTO job_details(job_id, body) VALUES (?, ?)",
                     ((i, r[12]) for i, r in enumerate(rows, start=1) if r[12]))
