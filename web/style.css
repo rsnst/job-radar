@@ -443,3 +443,29 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 .fit blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); font-size: .88rem; }
 .fit .note { margin: 4px 0; }
 #profile-text { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper, #fff); color: inherit; resize: vertical; }
+
+/* ---------- job assistant chat */
+.chat-fab {
+  position: fixed; right: 16px; bottom: 16px; z-index: 40; font: 600 .9rem var(--f);
+  padding: 10px 16px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--accent); color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+}
+.chat-fab:focus-visible, .chat .link:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.chat {
+  position: fixed; right: 16px; bottom: 70px; z-index: 41; width: min(380px, calc(100vw - 32px));
+  max-height: min(560px, calc(100vh - 110px)); display: flex; flex-direction: column; gap: 8px;
+  background: var(--paper, #fff); color: inherit; border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.2); padding: 14px;
+}
+.chat[hidden] { display: none; }
+.chat-head { display: flex; justify-content: space-between; align-items: center; }
+.chat-head h2 { margin: 0; font-size: 1rem; }
+.chat-opt { font-size: .85rem; display: flex; gap: 6px; align-items: center; }
+.chat-log { flex: 1; min-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.chat-msg { padding: 8px 10px; border-radius: 10px; font-size: .9rem; line-height: 1.4; white-space: pre-wrap; max-width: 92%; }
+.chat-msg.user { align-self: flex-end; background: var(--accent-soft, #eee); }
+.chat-msg.assistant { align-self: flex-start; border: 1px solid var(--line); }
+.chat-form { display: flex; gap: 6px; }
+.chat-form input { flex: 1; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; min-width: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 600px) { .chat-fab { bottom: 12px; right: 12px; } .chat { right: 8px; bottom: 60px; } }

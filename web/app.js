@@ -339,6 +339,7 @@ function showTab(tab) {
 
 // ---------- job details panel
 let sheetJob = null, sheetReturn = null, detailToken = 0, sheetDescHtml = "";
+const chatHistory = [];
 const detailCache = new Map(); // job id -> description HTML ("" when the posting has none)
 
 // Inflate a zlib-compressed BLOB from job_details into HTML text.
@@ -407,6 +408,65 @@ async function renderDescription(j) {
 }
 
 function fmtDay(d) { return new Date(d * 86400000).toISOString().slice(0, 10); }
+
+// ---------- job assistant chat
+function chatLine(role, text) {
+  const div = document.createElement("div");
+  div.className = `chat-msg ${role}`;
+  div.textContent = text; // model output is shown as plain text, never as HTML
+  $("#chat-log").appendChild(div);
+  $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
+}
+
+function openChat() {
+  $("#chat").hidden = false;
+  $("#chat-open").setAttribute("aria-expanded", "true");
+  $("#chat-context").textContent = sheetJob
+    ? `Reading: ${sheetJob.title}. Ask about this job, or anything else.`
+    : "Ask anything about jobs or your search.";
+  if (!account.user) {
+    $("#chat-log").innerHTML = "";
+    chatLine("assistant", "Sign in to use the assistant.");
+  }
+  $("#chat-input").focus();
+}
+
+function closeChat() {
+  $("#chat").hidden = true;
+  $("#chat-open").setAttribute("aria-expanded", "false");
+  $("#chat-open").focus();
+}
+
+async function sendChat(e) {
+  e.preventDefault();
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  if (!account.user) { chatLine("assistant", "Sign in to use the assistant."); return; }
+  input.value = "";
+  chatLine("user", text);
+  chatHistory.push({ role: "user", content: text });
+  const send = $("#chat-send");
+  send.disabled = true;
+  try {
+    const { ok, data } = await apiFetch("/api/chat", { method: "POST", body: {
+      messages: chatHistory.slice(-10),
+      title: sheetJob?.title || "",
+      description: sheetJob ? sheetDescHtml : "",
+      useResume: $("#chat-resume").checked,
+    } });
+    const reply = ok ? data.reply : (data.error || "The assistant didn't answer. Try again.");
+    if (ok) chatHistory.push({ role: "assistant", content: reply });
+    else chatHistory.pop();
+    chatLine("assistant", reply);
+  } catch {
+    chatHistory.pop();
+    chatLine("assistant", "The assistant didn't answer. Try again.");
+  } finally {
+    send.disabled = false;
+    input.focus();
+  }
+}
 
 // ---------- AI fit check and the resume dialog
 const fitBox = () => $("#sheet-fit");
@@ -559,6 +619,9 @@ function wire() {
     else if (id === "fit-edit") showProfile();
   });
   $("#profile-text").addEventListener("input", updateProfileCount);
+  $("#chat-open").addEventListener("click", openChat);
+  $("#chat-close").addEventListener("click", closeChat);
+  $("#chat-form").addEventListener("submit", sendChat);
   $("#profile-save").addEventListener("click", () => saveProfile($("#profile-text").value.trim()));
   $("#profile-delete").addEventListener("click", () => { if (confirm("Delete your resume? This can't be undone.")) saveProfile(""); });
   $("#profile-close").addEventListener("click", () => $("#profile-dialog").close());
