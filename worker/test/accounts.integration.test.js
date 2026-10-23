@@ -54,7 +54,7 @@ function mockSupabase(seed = {}) {
 
 async function body(req) { let b = ""; for await (const c of req) b += c; return b ? JSON.parse(b) : null; }
 
-function workdayHtml({ mode, captcha }) {
+function workdayHtml({ mode, captcha, accountTerms }) {
   return `<!doctype html><title>Sample Workday</title>
   ${captcha ? '<div class="captcha-box"></div>' : ""}
   <button id="apply" type="button">Apply</button>
@@ -62,7 +62,7 @@ function workdayHtml({ mode, captcha }) {
     <label>Email <input type="email" name="email" aria-label="Email"></label>
     <label>Password <input type="password" aria-label="Password"></label>
     <label>Verify New Password <input type="password" aria-label="Verify New Password"></label>
-    <label><input type="checkbox" id="terms"> I agree to the terms and privacy notice</label>
+    ${accountTerms ? '<label><input type="checkbox" id="terms"> I agree to the terms and privacy notice</label>' : ""}
     <button type="button" id="mk">Create Account</button>
   </div>
   <div id="verify" hidden><p>Enter the verification code we emailed you.</p>
@@ -83,7 +83,7 @@ function workdayHtml({ mode, captcha }) {
   $("apply").onclick = () => show("${mode === "signin" ? "signin" : "create"}");
   $("mk").onclick = async () => {
     const pw = [...document.querySelectorAll("#create input[type=password]")].map((i) => i.value);
-    if (pw[0] !== pw[1] || !$("terms").checked) return;
+    if (pw[0] !== pw[1] || ($("terms") && !$("terms").checked)) return;
     await fetch("/created?email=" + encodeURIComponent(document.querySelector("#create input[type=email]").value) + "&pw=" + encodeURIComponent(pw[0]));
     show("verify");
   };
@@ -99,7 +99,7 @@ function workdayHtml({ mode, captcha }) {
   </script>`;
 }
 
-async function harness(t, { autoApply = { createAccounts: true }, seed, sendMail = true, mailCode = "483920", mailFrom = "Workday <no-reply@myworkday.com>" } = {}) {
+async function harness(t, { autoApply = { createAccounts: true }, seed, sendMail = true, mailCode = "483920", mailFrom = "Workday <no-reply@myworkday.com>", accountTerms = true } = {}) {
   const db = mockSupabase(seed);
   const seen = { created: null, signins: [], runs: [] };
   const state = { run: { id: "r1", user_id: userId, job_key: "", user_decision: "pending" }, tracker: null };
@@ -107,7 +107,7 @@ async function harness(t, { autoApply = { createAccounts: true }, seed, sendMail
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     const send = (v, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(v)); };
-    if (url.pathname === "/workday") { res.writeHead(200, { "content-type": "text/html" }); return res.end(workdayHtml({ mode: url.searchParams.get("mode"), captcha: url.searchParams.get("captcha") === "1" })); }
+    if (url.pathname === "/workday") { res.writeHead(200, { "content-type": "text/html" }); return res.end(workdayHtml({ mode: url.searchParams.get("mode"), captcha: url.searchParams.get("captcha") === "1", accountTerms })); }
     if (url.pathname === "/created") {
       seen.created = { email: url.searchParams.get("email"), pw: url.searchParams.get("pw") };
       res.writeHead(204); res.end();
@@ -163,7 +163,7 @@ async function harness(t, { autoApply = { createAccounts: true }, seed, sendMail
 }
 
 test("opt-in: creates an alias account, stores the password encrypted, verifies by code, submits unattended", async (t) => {
-  const h = await harness(t);
+  const h = await harness(t, { accountTerms: false });
   await h.go("", { auto_submit: true });
   assert.equal(h.state.run.status, "submitted", JSON.stringify(h.state.run));
   const [acct] = h.db.tables.employer_accounts;
@@ -175,6 +175,17 @@ test("opt-in: creates an alias account, stores the password encrypted, verifies 
   const [mail] = h.db.tables.inbound_mail;
   assert.equal(mail.consumed, true); assert.equal(mail.code, "");
   assert.ok(h.state.run.result.filled_fields.some((x) => x.value === "Jordan"));
+});
+
+test("employer terms are never accepted automatically", async (t) => {
+  const h = await harness(t);
+  await h.go("", { auto_submit: true });
+  assert.equal(h.state.run.status, "needs_user");
+  assert.equal(h.state.run.stage, "account-terms");
+  assert.match(h.state.run.message, /Review the employer's terms/);
+  assert.deepEqual(h.db.tables.employer_accounts, []);
+  assert.deepEqual(h.db.tables.mail_aliases, []);
+  assert.equal(h.seen.created, null);
 });
 
 test("without the opt-in the worker stops at the account page and creates nothing", async (t) => {
@@ -206,7 +217,7 @@ test("a CAPTCHA stops the run for the user and nothing is attempted", async (t) 
 });
 
 test("verification mail that never arrives hands the run back instead of guessing", async (t) => {
-  const h = await harness(t, { sendMail: false });
+  const h = await harness(t, { sendMail: false, accountTerms: false });
   process.env.VERIFY_WAIT_MS = "1200";
   await h.go("", { auto_submit: true });
   assert.equal(h.state.run.status, "needs_user");
@@ -214,7 +225,7 @@ test("verification mail that never arrives hands the run back instead of guessin
 });
 
 test("mail from a non-Workday sender is ignored", async (t) => {
-  const h = await harness(t, { mailFrom: "Phisher <x@evil.example>" });
+  const h = await harness(t, { mailFrom: "Phisher <x@evil.example>", accountTerms: false });
   process.env.VERIFY_WAIT_MS = "1200";
   await h.go("", { auto_submit: true });
   assert.equal(h.state.run.stage, "email-verification");
