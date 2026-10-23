@@ -58,6 +58,7 @@ test("worker completes a synthetic local Workday flow and records the receipt", 
   state.run.job_key = `${base}/workday`;
   process.env.SUPABASE_URL = base;
   process.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-test-key";
+  process.env.NODE_ENV = "test";
   process.env.WORKER_TEST_ALLOW_LOCAL = "1";
   const { processRun } = await import(`../src/index.js?integration=${Date.now()}`);
 

@@ -23,7 +23,7 @@ async function rest(path, options = {}) {
 function isWorkdayUrl(value) {
   try {
     const u = new URL(value);
-    if (process.env.WORKER_TEST_ALLOW_LOCAL === "1" && ["localhost", "127.0.0.1"].includes(u.hostname)) return true;
+    if (process.env.NODE_ENV === "test" && process.env.WORKER_TEST_ALLOW_LOCAL === "1" && ["localhost", "127.0.0.1"].includes(u.hostname)) return true;
     return u.protocol === "https:" && (u.hostname === "myworkdayjobs.com" || u.hostname.endsWith(".myworkdayjobs.com")
       || u.hostname === "myworkday.com" || u.hostname.endsWith(".myworkday.com"));
   } catch { return false; }
