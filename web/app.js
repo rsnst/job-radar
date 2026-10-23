@@ -557,7 +557,7 @@ async function showProfile() {
   if (!ok) { setProfileMsg(data.error || "Couldn't load your resume."); return; }
   $("#profile-text").value = data.text || "";
   updateProfileCount();
-  setProfileMsg(data.text ? "" : "No resume yet. Paste it above and save.");
+  setProfileMsg(data.text ? "" : "No resume yet. Drop a file above or paste your text, then save.");
   $("#profile-text").focus();
 }
 
@@ -569,6 +569,101 @@ async function saveProfile(text) {
   updateProfileCount();
   setProfileMsg(data.text ? "Saved." : "Deleted.");
   return true;
+}
+
+// Resume files are read in the browser; the server only stores the resulting text.
+const RESUME_MAX_BYTES = 5 * 1024 * 1024;
+const RESUME_LIBS = {
+  pdf: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+  pdfWorker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
+  docx: "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js",
+};
+const loadedLibs = {};
+function loadScript(src) {
+  if (!loadedLibs[src]) loadedLibs[src] = new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src; el.async = true; el.onload = resolve;
+    el.onerror = () => { delete loadedLibs[src]; reject(new Error("load")); };
+    document.head.appendChild(el);
+  });
+  return loadedLibs[src];
+}
+
+async function textFromPdf(file) {
+  await loadScript(RESUME_LIBS.pdf);
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = RESUME_LIBS.pdfWorker;
+  const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pages = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const content = await page.getTextContent();
+    let line = "", out = "";
+    for (const item of content.items) {
+      if (item.hasEOL) { out += line + "\n"; line = ""; }
+      line += item.str + (item.hasEOL ? "" : " ");
+    }
+    pages.push(out + line);
+  }
+  return pages.join("\n\n");
+}
+
+async function textFromDocx(file) {
+  await loadScript(RESUME_LIBS.docx);
+  const { value } = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  return value;
+}
+
+function cleanResumeText(t) {
+  return String(t || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t\u00a0]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function readResumeFile(file) {
+  if (!file) return;
+  const name = file.name || "file";
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  const isPdf = file.type === "application/pdf" || ext === "pdf";
+  const isDocx = ext === "docx" || file.type.includes("wordprocessingml");
+  const isText = ext === "txt" || ext === "md" || file.type.startsWith("text/");
+  if (!isPdf && !isDocx && !isText) {
+    setProfileMsg("That file type isn't supported. Use PDF, Word (.docx), or a text file, or paste the text.");
+    return;
+  }
+  if (file.size > RESUME_MAX_BYTES) {
+    setProfileMsg("That file is over 5 MB. Try a smaller PDF, or paste the text.");
+    return;
+  }
+  setProfileMsg(`Reading ${name}…`);
+  try {
+    const raw = isPdf ? await textFromPdf(file) : isDocx ? await textFromDocx(file) : await file.text();
+    const text = cleanResumeText(raw);
+    if (text.length < 40) {
+      setProfileMsg(isPdf
+        ? "No text found in that PDF. It may be a scan. Try a Word file or paste the text."
+        : "That file has almost no text. Try another file or paste the text.");
+      return;
+    }
+    const clipped = text.length > 20000;
+    $("#profile-text").value = clipped ? text.slice(0, 20000) : text;
+    updateProfileCount();
+    setProfileMsg(`Read ${name}. Check the text below, then save.` + (clipped ? " It was trimmed to 20,000 characters." : ""));
+    $("#profile-text").focus();
+  } catch {
+    setProfileMsg("Couldn't read that file. Try another format, or paste the text.");
+  }
+}
+
+function setupResumeUpload() {
+  const drop = $("#resume-drop");
+  const input = $("#profile-file");
+  input.addEventListener("change", () => { readResumeFile(input.files[0]); input.value = ""; });
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => readResumeFile(e.dataTransfer.files[0]));
 }
 
 function openSheet(j) {
@@ -651,6 +746,7 @@ function wire() {
   $("#profile-save").addEventListener("click", () => saveProfile($("#profile-text").value.trim()));
   $("#profile-delete").addEventListener("click", () => { if (confirm("Delete your resume? This can't be undone.")) saveProfile(""); });
   $("#profile-close").addEventListener("click", () => $("#profile-dialog").close());
+  setupResumeUpload();
   const authMsg = (t) => { $("#signin-msg").textContent = t; };
   const credentials = () => {
     const email = $("#signin-email").value.trim();
