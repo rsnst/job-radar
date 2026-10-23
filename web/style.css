@@ -440,3 +440,17 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 .chat-form .btn { height: 40px; }
 .chat-form .btn:disabled { opacity: .6; cursor: default; }
 @media (max-width: 600px) { .chat-fab { bottom: 12px; right: 12px; } .chat { right: 8px; bottom: 60px; } }
+
+/* ---------- resume upload */
+.resume-dialog { width: min(480px, calc(100vw - 32px)); }
+.resume-drop {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  margin: 12px 0 8px; padding: 22px 16px; cursor: pointer; border-radius: var(--radius);
+  border: 1.5px dashed var(--line-strong); background: var(--bg); color: var(--muted); font-size: .88rem;
+  transition: border-color .15s, background .15s;
+}
+.resume-drop strong { color: var(--ink); font-weight: 600; font-size: .95rem; }
+.resume-drop:hover, .resume-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.resume-drop:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.resume-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.resume-dialog textarea { min-height: 160px; }

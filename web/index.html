@@ -114,11 +114,17 @@
   </form>
 </section>
 
-<dialog id="profile-dialog" class="signin">
+<dialog id="profile-dialog" class="signin resume-dialog">
   <form method="dialog">
-    <h2>My resume</h2>
-    <p class="note">Paste your resume as text. Only you can see it. It's used to check how well you fit each job you open.</p>
-    <label class="field"><span>Resume text</span><textarea id="profile-text" rows="14" maxlength="20000" placeholder="Paste your resume here"></textarea></label>
+    <h2>Your resume</h2>
+    <p class="note">Only you can see it. Job Compass uses it to check how well you fit each job and to answer questions in the assistant.</p>
+    <label id="resume-drop" class="resume-drop" for="profile-file">
+      <strong>Drop a file here, or choose one</strong>
+      <span>PDF, Word (.docx), or text. Up to 5 MB.</span>
+      <input id="profile-file" type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown">
+    </label>
+    <p class="note" id="profile-or">Or paste the text below.</p>
+    <label class="field"><span>Resume text</span><textarea id="profile-text" rows="12" maxlength="20000" placeholder="Paste your resume here"></textarea></label>
     <p class="note"><span id="profile-count">0</span> / 20,000 characters</p>
     <div class="sheet-actions">
       <button type="button" id="profile-save" class="btn primary">Save resume</button>
