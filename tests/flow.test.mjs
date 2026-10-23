@@ -43,7 +43,8 @@ test("Workday support copy explains the app-owned worker and the demo exercises 
   const copy = supportText("Workday");
   assert.match(copy, /prepares a tailored resume and answer packet/i);
   assert.match(copy, /queue supported application steps in its browser worker/i);
-  assert.match(copy, /account sign-in, emailed verification, CAPTCHA/i);
+  assert.match(copy, /create or sign in to the employer account and finish email verification/i);
+  assert.match(copy, /CAPTCHA, unknown questions/i);
   assert.equal(DEMO_JOB.ats, "Workday-style mock (synthetic)");
   assert.equal(isDemoJob(DEMO_JOB), true, "the Workday-style walkthrough remains an isolated demo");
 });

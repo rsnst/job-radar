@@ -154,7 +154,7 @@ export const STEP_LABEL = {
 export function supportText(ats) {
   const name = ats ? String(ats) : "This employer's site";
   if (/workday/i.test(name)) {
-    return "Workday: Job Compass prepares a tailored resume and answer packet, then can queue supported application steps in its browser worker. Account sign-in, emailed verification, CAPTCHA, unknown questions, and required legal choices may still need you.";
+    return "Workday: Job Compass prepares a tailored resume and answer packet, then can queue supported application steps in its browser worker. If you opted in, it can also create or sign in to the employer account and finish email verification through a Job Compass address. CAPTCHA, unknown questions, and required legal choices still need you.";
   }
   return `${name}: the app can prepare tailored materials, but the first browser-worker release supports Workday only.`;
 }

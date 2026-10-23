@@ -101,7 +101,7 @@ export async function renderTracker() {
   const counts = STATUSES.map(([v, t]) => [v, t, apps.filter((a) => a.status === v).length]).filter(([, , n]) => n);
   const shown = apps.filter((a) => !trackerFilter || a.status === trackerFilter);
   root.innerHTML = `
-    <div class="auto-banner"><strong>What the app automates:</strong> it drafts tailored materials for jobs you saved that match your criteria. It never submits applications, creates accounts, or reads your email. You review and submit each one.</div>
+    <div class="auto-banner"><strong>What the app automates:</strong> it drafts tailored materials for jobs you saved that match your criteria. Creating employer accounts and submitting without your review are opt-ins in your profile, off by default, and only on Workday. It never solves CAPTCHAs and never reads your own inbox.</div>
     ${addJobBar()}
     <section id="queue-root" aria-live="polite"></section>
     <div class="ap-summary">${counts.map(([v, t, n]) => `<button type="button" class="chip ${trackerFilter === v ? "on" : ""}" data-f="${v}">${esc(t)} <strong>${n}</strong></button>`).join("")}

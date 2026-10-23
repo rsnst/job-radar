@@ -1,8 +1,9 @@
 // Auto-apply criteria: which saved jobs go into the preparation queue. Pure functions, no network.
-// Matching only PREPARES a packet for the user to review. It never submits anything.
+// Matching only PREPARES a packet. Account creation and hands-free submission are separate, off-by-default opt-ins.
 
 export const DEFAULT_AUTOAPPLY = {
   enabled: false,
+  createAccounts: false,   // opt in to the worker creating employer accounts (alias address, encrypted password)
   autoSubmit: false,       // opt in to the worker submitting after all required fields are verified
   keywords: [],          // a job title must contain at least one of these (case-insensitive). Empty = any title.
   excludeKeywords: [],   // a job title containing any of these is skipped.
@@ -22,6 +23,7 @@ export function cleanAutoApply(input = {}) {
   const min = Math.max(0, Math.min(1000000, Math.round(Number(d.minSalary) || 0)));
   return {
     enabled: d.enabled === true,
+    createAccounts: d.createAccounts === true,
     autoSubmit: d.autoSubmit === true,
     keywords: list(d.keywords), excludeKeywords: list(d.excludeKeywords),
     companies: list(d.companies), excludeCompanies: list(d.excludeCompanies),

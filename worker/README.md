@@ -5,7 +5,8 @@ This is the app-owned browser worker used by the Apply flow. It runs separately 
 ## First-release limits
 
 - Workday links on `*.myworkdayjobs.com` and `*.myworkday.com` only.
-- Account creation/sign-in and Gmail OTP retrieval are not implemented yet. The worker stops and reports when an account page appears; it cannot hand that headless session to the user.
+- Account creation, sign-in and email verification are opt-in (My profile → “Create employer accounts for me”). Without the opt-in, or without the settings below, the worker stops at the account page.
+- Verified only against mock pages in `worker/test/`. Real Workday tenants vary; expect to adjust selectors after a supervised first run.
 - CAPTCHA/security checks, required checkboxes/attestations, and unknown required answers stop the run. It does not bypass them or guess.
 - The worker keeps the browser session open while an application awaits approval. Run one worker instance per deployment; if the process restarts, the user may need to retry the run.
 - Do not expose the Supabase service-role key to the browser or frontend.
@@ -19,7 +20,13 @@ This is the app-owned browser worker used by the Apply flow. It runs separately 
    docker build -f worker/Dockerfile -t job-compass-worker .
    ```
 
-3. Run one private worker container with the backend-only environment variables:
+3. For account creation and email verification, also apply `supabase/employer_accounts.sql`, then set:
+   - `CREDENTIAL_KEY`: 32 random bytes, base64 (`openssl rand -base64 32`). Losing it makes stored passwords unreadable; leaking it exposes them. Keep it only on the worker.
+   - `INBOX_DOMAIN`: a domain whose inbound mail your provider forwards (as JSON) to the worker's `POST /inbound`.
+   - `INBOUND_SECRET`: shared secret the provider sends as `Authorization: Bearer ...` (or the Basic-auth password). `INBOUND_PORT` defaults to 8787; put it behind HTTPS.
+   - Optional: `CHROMIUM_PATH` (use an existing Chromium), `VERIFY_WAIT_MS` (default 120000).
+
+4. Run one private worker container with the backend-only environment variables:
 
    ```sh
    docker run --restart unless-stopped \
@@ -28,4 +35,4 @@ This is the app-owned browser worker used by the Apply flow. It runs separately 
      job-compass-worker
    ```
 
-The worker has no public HTTP listener. Logs contain run IDs and error summaries, not profile values or credentials. Workday URLs are host-checked before navigation.
+The only listener is the optional inbound-mail webhook (enabled when `INBOUND_SECRET` and `INBOX_DOMAIN` are set). Logs contain run IDs and error summaries, not profile values or credentials. Workday URLs are host-checked before navigation.

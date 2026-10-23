@@ -140,7 +140,7 @@ Free-tier notes: results are cached per user and job, so a repeat check costs no
 2. Optional: set `TAILOR_DAILY_LIMIT` in Vercel (default 10 drafts per user per day). It uses the same `GROQ_API_KEY` as the fit check.
 3. Redeploy.
 
-What it does: drafts a tailored resume and cover letter from the signed-in user's profile and resume only. Anything the posting asks for that the profile doesn't show is listed as missing, not claimed. Each saved draft is a numbered version with a line-by-line diff. The apply review lists the exact answers, attachments and destination, and records a receipt only after the user confirms they submitted the form on the employer's site. The app never submits applications itself.
+What it does: drafts a tailored resume and cover letter from the signed-in user's profile and resume only. Anything the posting asks for that the profile doesn't show is listed as missing, not claimed. Each saved draft is a numbered version with a line-by-line diff. The apply review lists the exact answers, attachments and destination, and records a receipt only after the user confirms they submitted the form on the employer's site. On Workday, with opt-ins in My profile, the worker can create the employer account, verify by email and submit unattended; everywhere else the user submits.
 
 For Workday, the review also downloads a tailored PDF and a copyable answer packet. The Apply flow can enqueue a Workday run for the app-owned Playwright worker in `worker/`. The worker can fill clear profile matches, upload the tailored PDF, and submit only when the user has opted into hands-free submission or approved the review. It stops for account sign-in/creation, emailed verification, CAPTCHA/security checks, required attestations, and unknown answers. Configure and run the worker using `worker/README.md`.
 
@@ -150,5 +150,5 @@ For Workday, the review also downloads a tailored PDF and a copyable answer pack
 - In My profile, the **Auto-apply criteria** section sets which saved jobs go into the preparation queue: title keywords, excluded words, company include and exclude lists, locations, remote, and a minimum yearly pay.
 - The Applications tab shows the queue. "Prepare" drafts a tailored resume and cover letter for up to five matching jobs per click, using the daily draft limit.
 - **Nothing is submitted automatically.** Every application is reviewed and submitted by you. Account creation, email verification, and any CAPTCHA or legal step stay with you.
-- Which platforms support what, and the Gmail status: see `docs/ATS_SUPPORT.md`. Gmail verification is not implemented.
+- Which platforms support what, and the Gmail status: see `docs/ATS_SUPPORT.md`. Email verification uses a Job Compass alias address, never the user's Gmail.
 - No database migration is needed for this increment. The criteria are stored in your profile data, and the step receipts use the existing history field.

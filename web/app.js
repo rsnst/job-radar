@@ -659,11 +659,31 @@ async function saveProfileDetails() {
   setProfileMsg("Profile saved.");
 }
 
+async function loadEmployerAccounts() {
+  const box = $("#employer-accounts");
+  const r = await apiFetch("/api/employer-accounts");
+  const list = r.ok ? r.data.accounts || [] : [];
+  box.replaceChildren(...list.map((a) => {
+    const row = document.createElement("div");
+    row.className = "pf-row";
+    row.innerHTML = `<span><strong>${esc(a.host)}</strong> · ${esc(a.email)}</span> <button type="button" class="btn" data-del-account="${esc(a.host)}">Remove</button>`;
+    return row;
+  }));
+  if (list.length) box.insertAdjacentHTML("afterbegin", `<p class="note">Employer accounts Job Compass created for you. Removing one deletes the stored password; you can no longer sign in to that account through Job Compass.</p>`);
+}
+$("#employer-accounts").addEventListener("click", async (e) => {
+  const host = e.target.closest("[data-del-account]")?.dataset.delAccount;
+  if (!host || !confirm(`Remove the stored account for ${host}?`)) return;
+  await apiFetch(`/api/employer-accounts?host=${encodeURIComponent(host)}`, { method: "DELETE" });
+  loadEmployerAccounts();
+});
+
 async function showProfile() {
   setProfileMsg("Loading…");
   $("#profile-dialog").showModal();
   const [details, resume] = await Promise.all([apiFetch("/api/profile-details"), apiFetch("/api/profile")]);
   if (details.ok) fillProfileForm(details.data.data || {});
+  loadEmployerAccounts().catch(() => {});
   if (!resume.ok) { setProfileMsg(resume.data.error || "Couldn't load your resume."); return; }
   $("#profile-text").value = resume.data.text || "";
   updateProfileCount();
