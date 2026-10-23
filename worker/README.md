@@ -5,7 +5,7 @@ This is the app-owned browser worker used by the Apply flow. It runs separately 
 ## First-release limits
 
 - Workday links on `*.myworkdayjobs.com` and `*.myworkday.com` only.
-- Account creation/sign-in and Gmail OTP retrieval are not implemented yet. The worker pauses at account pages.
+- Account creation/sign-in and Gmail OTP retrieval are not implemented yet. The worker stops and reports when an account page appears; it cannot hand that headless session to the user.
 - CAPTCHA/security checks, required checkboxes/attestations, and unknown required answers stop the run. It does not bypass them or guess.
 - The worker keeps the browser session open while an application awaits approval. Run one worker instance per deployment; if the process restarts, the user may need to retry the run.
 - Do not expose the Supabase service-role key to the browser or frontend.
