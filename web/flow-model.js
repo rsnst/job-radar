@@ -150,13 +150,13 @@ export const STEP_LABEL = {
   submitted_by_user: "You recorded: application submitted on the employer's site (done by you)",
 };
 
-// What the app can do on each platform today. Nothing here is automated yet; see docs/ATS_SUPPORT.md.
+// What the app can do on each platform today; see docs/ATS_SUPPORT.md.
 export function supportText(ats) {
   const name = ats ? String(ats) : "This employer's site";
   if (/workday/i.test(name)) {
-    return "Workday: Job Compass prepares a tailored resume and answer packet, then opens the employer's page. The optional local browser helper fills clearly matched profile fields only when you click it. You handle accounts, verification, CAPTCHA, review, and submission.";
+    return "Workday: Job Compass prepares a tailored resume and answer packet, then can queue supported application steps in its browser worker. Account sign-in, emailed verification, CAPTCHA, unknown questions, and required legal choices may still need you.";
   }
-  return `${name}: the app doesn't fill or submit this form. You complete the account and application steps yourself. Pre-fill isn't built for this platform yet.`;
+  return `${name}: the app can prepare tailored materials, but the first browser-worker release supports Workday only.`;
 }
 
 // Which posting text a draft is checked against. The employer's text wins. Pasted text is used only when

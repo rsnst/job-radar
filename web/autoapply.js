@@ -3,6 +3,7 @@
 
 export const DEFAULT_AUTOAPPLY = {
   enabled: false,
+  autoSubmit: false,       // opt in to the worker submitting after all required fields are verified
   keywords: [],          // a job title must contain at least one of these (case-insensitive). Empty = any title.
   excludeKeywords: [],   // a job title containing any of these is skipped.
   companies: [],         // if set, the company must match one of these. Empty = any company.
@@ -21,6 +22,7 @@ export function cleanAutoApply(input = {}) {
   const min = Math.max(0, Math.min(1000000, Math.round(Number(d.minSalary) || 0)));
   return {
     enabled: d.enabled === true,
+    autoSubmit: d.autoSubmit === true,
     keywords: list(d.keywords), excludeKeywords: list(d.excludeKeywords),
     companies: list(d.companies), excludeCompanies: list(d.excludeCompanies),
     locations: list(d.locations), remoteOk: d.remoteOk !== false, minSalary: min,

@@ -230,8 +230,9 @@
     </fieldset>
 
     <fieldset class="pf-section" id="autoapply-section"><legend>Auto-apply criteria</legend>
-      <p class="note"><strong>What this does:</strong> saved jobs that match these rules go into your preparation queue, where the app drafts your tailored resume and cover letter. <strong>Nothing is submitted automatically.</strong> You review and submit each application yourself.</p>
+      <p class="note"><strong>Job matching and application mode.</strong> Matching saved jobs can be prepared for the application worker. Hands-free submission is a separate opt-in; the worker must stop for missing answers, security checks, or unsupported forms.</p>
       <label class="pf-check wide"><input type="checkbox" name="autoApply.enabled"> Use these criteria to build my preparation queue</label>
+      <label class="pf-check wide"><input type="checkbox" name="autoApply.autoSubmit"> Allow the worker to submit when all required answers are verified</label>
       <div class="pf-grid">
         <label class="pf-field wide"><span>Job title must include (comma separated)</span><input name="autoApply.keywords" placeholder=".NET, Backend, Full stack"></label>
         <label class="pf-field wide"><span>Skip titles with these words</span><input name="autoApply.excludeKeywords" placeholder="Intern, Unpaid"></label>
@@ -269,9 +270,8 @@
       <div class="sheet-actions">
         <button type="button" id="profile-save" class="btn">Save resume</button>
         <button type="button" id="profile-delete" class="btn">Delete resume</button>
-        <button type="button" id="profile-export-workday" class="btn">Export profile for Workday helper</button>
       </div>
-      <p class="note">Export creates a local JSON file for the optional browser helper. The helper stores it only in this browser and fills Workday fields only when you click its button.</p>
+      <p class="note">Job Compass uses this profile to prepare and run supported applications from the Apply flow.</p>
     </fieldset>
 
     <div class="sheet-actions pf-foot">

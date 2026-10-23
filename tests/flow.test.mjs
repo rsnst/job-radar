@@ -39,11 +39,11 @@ test("demo job is recognised by its demo:// address and can't reach an employer"
   assert.equal(isDemoJob({ url: "https://example.com/job", demo: true }), true, "a demo flag alone also marks it demo");
 });
 
-test("Workday support copy sets the right expectation and the demo exercises that guide", () => {
+test("Workday support copy explains the app-owned worker and the demo exercises that guide", () => {
   const copy = supportText("Workday");
   assert.match(copy, /prepares a tailored resume and answer packet/i);
-  assert.match(copy, /optional local browser helper fills clearly matched profile fields only when you click it/i);
-  assert.match(copy, /accounts, verification, CAPTCHA, review, and submission/i);
+  assert.match(copy, /queue supported application steps in its browser worker/i);
+  assert.match(copy, /account sign-in, emailed verification, CAPTCHA/i);
   assert.equal(DEMO_JOB.ats, "Workday-style mock (synthetic)");
   assert.equal(isDemoJob(DEMO_JOB), true, "the Workday-style walkthrough remains an isolated demo");
 });
