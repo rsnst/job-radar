@@ -98,6 +98,22 @@
   </section>
 </main>
 
+<button type="button" id="chat-open" class="chat-fab" aria-controls="chat" aria-expanded="false">Ask about jobs</button>
+<section id="chat" class="chat" aria-labelledby="chat-title" hidden>
+  <header class="chat-head">
+    <h2 id="chat-title">Job assistant</h2>
+    <button type="button" id="chat-close" class="link">Close</button>
+  </header>
+  <p class="note" id="chat-context">Ask anything. If a job is open, the assistant reads it too.</p>
+  <label class="chat-opt"><input type="checkbox" id="chat-resume"> Use my resume in answers</label>
+  <div id="chat-log" class="chat-log" aria-live="polite"></div>
+  <form id="chat-form" class="chat-form">
+    <label class="visually-hidden" for="chat-input">Your question</label>
+    <input id="chat-input" type="text" maxlength="2000" placeholder="e.g. What experience does this job want?" autocomplete="off">
+    <button type="submit" class="btn primary" id="chat-send">Send</button>
+  </form>
+</section>
+
 <dialog id="profile-dialog" class="signin">
   <form method="dialog">
     <h2>My resume</h2>
