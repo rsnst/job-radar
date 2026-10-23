@@ -1,6 +1,7 @@
 // GET: the signed-in user's full profile.  PUT { data }: save it after cleaning every field.
 // Only known fields are kept, each capped in length, so the stored JSON stays small and predictable.
 import { currentUser, restHeaders } from "../lib/supa.js";
+import { cleanAutoApply } from "../web/autoapply.js";
 
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const yn = (v) => (v === "yes" || v === "no" ? v : "");
@@ -65,6 +66,7 @@ export function cleanProfile(input) {
       return x.question ? x : null;
     }),
     summary: str(d.summary, 1500),
+    autoApply: cleanAutoApply(d.autoApply),
   };
 }
 

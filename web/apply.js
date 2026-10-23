@@ -2,6 +2,7 @@
 // Everything here is the signed-in user's own data. Nothing is submitted by this app: the user opens the
 // employer's page, completes the form, and then records the submission here with a receipt.
 import { account, apiFetch } from "./account.js";
+import { matchJob, cleanAutoApply } from "./autoapply.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -12,6 +13,17 @@ export const STATUSES = [
   ["submitted", "Submitted"], ["interview", "Interview"], ["rejected", "Rejected"], ["offer", "Offer"], ["withdrawn", "Withdrawn"],
 ];
 const LABEL = Object.fromEntries(STATUSES);
+const STEP_LABEL = {
+  account_created_by_user: "You confirmed you created an account",
+  verification_waiting: "Waiting for the verification email (you check your inbox)",
+  verification_done: "You confirmed email verification",
+  submitted_by_user: "You confirmed you submitted the application",
+};
+// What the app can do on each platform today. Nothing here is automated yet; see docs/ATS_SUPPORT.md.
+export function supportText(ats) {
+  const name = ats ? String(ats) : "This employer's site";
+  return `${name}: the app doesn't fill or submit this form. You complete the account and application steps yourself. Pre-fill isn't built for this platform yet.`;
+}
 const statusOptions = (cur) => STATUSES.map(([v, t]) => `<option value="${v}" ${v === cur ? "selected" : ""}>${t}</option>`).join("");
 
 const GAP_FIELDS = [
@@ -59,6 +71,10 @@ let kitJob = null;
 let getDesc = () => "";
 // app.js gives us a getter so the description is read at the moment the user asks for a draft.
 export function setDescriptionSource(fn) { getDesc = fn; }
+let loadLive = async () => "";
+// app.js gives us the live posting loader, used when the queue prepares a job that isn't open on screen.
+export function setLiveDescriptionLoader(fn) { loadLive = fn; }
+const plainText = (html) => String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 export function renderApplyKit(job) {
   kitJob = job;
   const box = $("#sheet-apply-kit");
@@ -280,6 +296,7 @@ export async function openReview(job) {
     <div class="pf-top"><h2>Prepare to apply</h2><button type="button" class="link" id="rv-close">Close</button></div>
     <p class="note">Nothing is sent from here. Open the employer's page, fill in the form with these answers, and submit it yourself. Then come back and record it.</p>
     <dl class="facts"><div><dt>Destination</dt><dd>${esc(job.url)}</dd></div><div><dt>Role</dt><dd>${esc(job.title)} · ${esc(job.company)}</dd></div></dl>
+    <p class="warn-box support"><strong>Automation:</strong> ${esc(supportText(job.ats))}</p>
     ${needed.length ? `<div class="warn-box"><strong>Needs your input before you apply:</strong><ul>${needed.map((n) => `<li>${esc(n)}</li>`).join("")}</ul><button type="button" class="btn" id="rv-profile">Open My profile</button></div>` : ""}
     <h3>Attachments</h3>
     <ul class="attach">
@@ -292,6 +309,13 @@ export async function openReview(job) {
     <details><summary>Optional: equal opportunity answers</summary>
       <table class="answers"><tbody>${eeoRows.map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${v && v !== "decline" ? esc(v) : "Not answered. Choose on the form."}</td></tr>`).join("")}</tbody></table>
     </details>
+    <h3>Account setup (you do this)</h3>
+    <p class="note">The app doesn't create accounts, choose passwords, read your email, or enter verification codes. Use your password manager. Record each step here after you finish it.</p>
+    <div class="sheet-actions">
+      <button type="button" class="btn" id="rv-step-account">I created my account</button>
+      <button type="button" class="btn" id="rv-step-waiting">Waiting for verification email</button>
+      <button type="button" class="btn" id="rv-step-verified">I verified my email</button>
+    </div>
     <h3>Things you complete on the employer's site</h3>
     <ul class="checklist">
       <li>Create or sign in to an account, if the site asks.</li>
@@ -300,10 +324,11 @@ export async function openReview(job) {
       <li>Read the terms and tick any consent boxes yourself.</li>
       <li>Press the final submit button.</li>
     </ul>
+    <label class="pf-check wide approve"><input type="checkbox" id="rv-approve"> I've checked every answer and attachment above, and they're accurate.</label>
     <div class="sheet-actions">
       <button type="button" class="btn primary" id="rv-open">Open application page</button>
       <button type="button" class="btn" id="rv-copy">Copy my answers</button>
-      <button type="button" class="btn" id="rv-submitted">I submitted it</button>
+      <button type="button" class="btn" id="rv-submitted" disabled>I submitted it</button>
     </div>
     <p id="rv-msg" class="note" role="status"></p>`;
   $("#rv-close").addEventListener("click", () => dlg.close());
@@ -317,11 +342,21 @@ export async function openReview(job) {
     if (!app.data.application || app.data.application.status === "saved") await saveStatus(job, "preparing", app.data.application?.notes || "");
     $("#rv-msg").textContent = "Opened the employer's page. Come back here to record the submission.";
   });
+  const stepBtn = (id, step, status) => $(id).addEventListener("click", async () => {
+    const res = await saveStatus(job, status || app.data.application?.status || "preparing", app.data.application?.notes || "", { step });
+    $("#rv-msg").textContent = res.ok ? `Recorded: ${STEP_LABEL[step]}.` : (res.data.error || "Couldn't record that step.");
+    if (res.ok) app.data.application = res.data.application;
+  });
+  stepBtn("#rv-step-account", "account_created_by_user");
+  stepBtn("#rv-step-waiting", "verification_waiting");
+  stepBtn("#rv-step-verified", "verification_done");
+  $("#rv-approve").addEventListener("change", (e) => { $("#rv-submitted").disabled = !e.target.checked; });
   $("#rv-submitted").addEventListener("click", async () => {
     if (!confirm("Did you submit this application on the employer's site? This records a receipt with the resume and cover letter versions you used.")) return;
     const btn = $("#rv-submitted");
     btn.disabled = true; $("#rv-msg").textContent = "Recording…";
     const res = await saveStatus(job, "submitted", app.data.application?.notes || "", {
+      step: "submitted_by_user",
       receipt: { destination: job.url, resume_version: resume?.version, cover_version: cover?.version },
     });
     btn.disabled = false;
@@ -369,10 +404,13 @@ export async function renderTracker() {
   const counts = STATUSES.map(([v, t]) => [v, t, apps.filter((a) => a.status === v).length]).filter(([, , n]) => n);
   const shown = apps.filter((a) => !trackerFilter || a.status === trackerFilter);
   root.innerHTML = `
+    <div class="auto-banner"><strong>What the app automates:</strong> it drafts tailored materials for jobs you saved that match your criteria. It never submits applications, creates accounts, or reads your email. You review and submit each one.</div>
+    <section id="queue-root" aria-live="polite"></section>
     <div class="ap-summary">${counts.map(([v, t, n]) => `<button type="button" class="chip ${trackerFilter === v ? "on" : ""}" data-f="${v}">${esc(t)} <strong>${n}</strong></button>`).join("")}
       ${trackerFilter ? `<button type="button" class="link" data-f="">Show all</button>` : ""}</div>
     <ol class="apps">${shown.map(appRow).join("")}</ol>`;
   for (const b of root.querySelectorAll("[data-f]")) b.addEventListener("click", () => { trackerFilter = b.dataset.f; renderTracker(); });
+  renderQueue(apps);
   for (const s of root.querySelectorAll("[data-status]")) s.addEventListener("change", async () => {
     const jobKey = s.dataset.status;
     const app = apps.find((x) => x.job_key === jobKey);
@@ -384,6 +422,75 @@ export async function renderTracker() {
   for (const t of root.querySelectorAll("[data-hist]")) t.addEventListener("click", () => {
     const li = t.closest("li"); li.classList.toggle("open");
   });
+}
+
+// ---------- preparation queue: saved jobs that match the user's criteria, drafted one at a time
+const QUEUE_BATCH = 5;
+async function renderQueue(apps) {
+  const box = $("#queue-root");
+  if (!box) return;
+  box.innerHTML = `<p class="note" role="status">Checking your auto-apply criteria…</p>`;
+  const r = await apiFetch("/api/profile-details");
+  if (!r.ok) { box.innerHTML = `<p class="note">${esc(r.data.error || "Couldn't load your criteria.")}</p>`; return; }
+  const criteria = cleanAutoApply(r.data.data?.autoApply);
+  if (!criteria.enabled) {
+    box.innerHTML = `<div class="queue-empty"><p>Auto-apply criteria are off. Turn them on to build a preparation queue from the jobs you save.</p><button type="button" class="btn" id="queue-open">Set up criteria in My profile</button></div>`;
+    $("#queue-open").addEventListener("click", () => $("#resume-open").click());
+    return;
+  }
+  const saved = apps.filter((a) => a.status === "saved");
+  const checked = saved.map((a) => ({ a, m: matchJob(a.job, criteria) }));
+  const matches = checked.filter((x) => x.m.match).map((x) => x.a);
+  const skipped = checked.filter((x) => !x.m.match);
+  box.innerHTML = `
+    <div class="queue">
+      <div class="queue-head">
+        <h3>Preparation queue <span class="count">${matches.length}</span></h3>
+        <button type="button" class="btn primary" id="queue-run" ${matches.length ? "" : "disabled"}>Prepare next ${Math.min(QUEUE_BATCH, matches.length) || ""}</button>
+      </div>
+      <p class="note">Each job here gets a draft resume and cover letter from your profile. Nothing is submitted. Open a job to review and submit it yourself. Up to ${QUEUE_BATCH} drafts per click.</p>
+      ${matches.length ? `<ol class="queue-list">${matches.map((a) => `<li><span>${esc(a.job?.title || "Untitled role")}</span> <span class="note">${esc(a.job?.company || "")}${a.job?.loc ? " · " + esc(a.job.loc) : ""}</span></li>`).join("")}</ol>`
+        : `<p class="note">No saved jobs match your criteria yet. Save jobs from the Jobs tab, then they appear here.</p>`}
+      <p id="queue-msg" class="note" role="status"></p>
+      ${skipped.length ? `<details><summary>${skipped.length} saved job${skipped.length === 1 ? "" : "s"} not queued</summary><ul>${skipped.map((x) => `<li>${esc(x.a.job?.title || "Untitled")}: ${esc(x.m.reasons.join(" "))}</li>`).join("")}</ul></details>` : ""}
+    </div>`;
+  $("#queue-run")?.addEventListener("click", () => runQueue(matches.slice(0, QUEUE_BATCH)));
+}
+
+async function runQueue(list) {
+  const msg = $("#queue-msg");
+  const run = $("#queue-run");
+  run.disabled = true;
+  let done = 0;
+  for (const app of list) {
+    msg.textContent = `Preparing ${done + 1} of ${list.length}: ${app.job?.title || "job"}…`;
+    const res = await prepareOne(app);
+    if (res.ok) done++;
+    else { msg.textContent = `${res.reason}${res.stop ? "" : " Stopped here."} ${done} prepared.`; break; }
+  }
+  if (done === list.length) msg.textContent = `${done} prepared. Open each one from Prepare to apply to review it.`;
+  renderTracker();
+}
+
+async function prepareOne(app) {
+  const job = app.job || {};
+  const html = await loadLive(job.url).catch(() => "");
+  const text = plainText(html);
+  if (!text) return { ok: false, reason: `No posting text for ${job.title || "this job"}. Open it and try again.` };
+  const r = await apiFetch("/api/tailor", { method: "POST", body: { job_key: app.job_key, title: job.title, company: job.company, description: text } });
+  if (!r.ok) return { ok: false, stop: r.status === 429, reason: r.data.error || "Couldn't draft right now." };
+  const d = r.data;
+  const res = await saveDoc(job, "resume", d.resume, d.flags || [], "ai");
+  if (!res.ok) return { ok: false, reason: res.data.error || "Couldn't save the resume draft." };
+  if (d.cover) {
+    const c = await saveDoc(job, "cover", d.cover, [], "ai");
+    if (!c.ok) return { ok: false, reason: c.data.error || "Couldn't save the cover letter draft." };
+  }
+  const needs = (d.profileGaps || []).length + (d.missing || []).length;
+  const status = needs ? "needs-info" : "ready-for-review";
+  const st = await saveStatus(job, status, app.notes || "");
+  if (!st.ok) return { ok: false, reason: st.data.error || "Couldn't update the status." };
+  return { ok: true, status };
 }
 
 function appRow(a) {
@@ -398,7 +505,7 @@ function appRow(a) {
     </div>
     ${receipts.length ? `<p class="note receipt">Receipt: submitted ${esc(fmtDate(receipts[0].at))} · resume v${receipts[0].receipt.resume_version ?? "—"} · cover letter v${receipts[0].receipt.cover_version ?? "—"}</p>` : ""}
     <button type="button" class="link" data-hist>History (${hist.length})</button>
-    <ul class="hist">${hist.map((h) => `<li>${esc(fmtDate(h.at))} · ${h.from ? esc(LABEL[h.from] || h.from) + " → " : ""}${esc(LABEL[h.to] || h.to)}${h.receipt ? " · receipt recorded" : ""}${h.note ? ` · ${esc(h.note)}` : ""}</li>`).join("") || "<li>No changes yet.</li>"}</ul>
+    <ul class="hist">${hist.map((h) => `<li>${esc(fmtDate(h.at))} · ${h.from ? esc(LABEL[h.from] || h.from) + " → " : ""}${esc(LABEL[h.to] || h.to)}${h.step ? " · " + esc(STEP_LABEL[h.step] || h.step) : ""}${h.receipt ? " · receipt recorded" : ""}${h.note ? ` · ${esc(h.note)}` : ""}</li>`).join("") || "<li>No changes yet.</li>"}</ul>
   </li>`;
 }
 

@@ -209,6 +209,20 @@
       <button type="button" class="btn pf-add" data-add="qa">Add a question and answer</button>
     </fieldset>
 
+    <fieldset class="pf-section" id="autoapply-section"><legend>Auto-apply criteria</legend>
+      <p class="note"><strong>What this does:</strong> saved jobs that match these rules go into your preparation queue, where the app drafts your tailored resume and cover letter. <strong>Nothing is submitted automatically.</strong> You review and submit each application yourself.</p>
+      <label class="pf-check wide"><input type="checkbox" name="autoApply.enabled"> Use these criteria to build my preparation queue</label>
+      <div class="pf-grid">
+        <label class="pf-field wide"><span>Job title must include (comma separated)</span><input name="autoApply.keywords" placeholder=".NET, Backend, Full stack"></label>
+        <label class="pf-field wide"><span>Skip titles with these words</span><input name="autoApply.excludeKeywords" placeholder="Intern, Unpaid"></label>
+        <label class="pf-field wide"><span>Only these companies (optional)</span><input name="autoApply.companies" placeholder="Acme, Initech"></label>
+        <label class="pf-field wide"><span>Skip these companies</span><input name="autoApply.excludeCompanies" placeholder=""></label>
+        <label class="pf-field wide"><span>Locations (optional)</span><input name="autoApply.locations" placeholder="Austin, Dallas"></label>
+        <label class="pf-field"><span>Minimum yearly pay (USD)</span><input type="number" min="0" step="1000" name="autoApply.minSalary" placeholder="0 for no minimum"></label>
+        <label class="pf-check"><input type="checkbox" name="autoApply.remoteOk"> Remote jobs pass the location rule</label>
+      </div>
+    </fieldset>
+
     <fieldset class="pf-section"><legend>Summary</legend>
       <label class="pf-field wide"><span>A few lines about you and what you're looking for</span><textarea name="summary" rows="3" placeholder=""></textarea></label>
     </fieldset>
