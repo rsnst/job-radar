@@ -118,17 +118,26 @@
 <dialog id="profile-dialog" class="signin profile-dialog">
   <form method="dialog" id="profile-form">
     <div class="pf-top"><h2>My profile</h2><button type="button" id="profile-close" class="link">Close</button></div>
-    <p class="note">Only you can see this. It fills in applications and is used to check how well you fit each job.</p>
+    <p class="note">Only you can see this. It fills in job applications and is used to check how well you fit each job. Don't enter Social Security, bank, or ID numbers here; applications that ask for them you'll answer yourself.</p>
 
-    <fieldset class="pf-section"><legend>Contact</legend>
+    <fieldset class="pf-section"><legend>Name and contact</legend>
       <div class="pf-grid">
-        <label class="pf-field "><span>Full name</span><input type="text" name="contact.fullName" placeholder="Jane Smith" autocomplete="off"></label>
+        <label class="pf-field "><span>Full legal name</span><input type="text" name="contact.fullName" placeholder="Jane Smith" autocomplete="off"></label>
+        <label class="pf-field "><span>Preferred name</span><input type="text" name="contact.preferredName" placeholder="Jane" autocomplete="off"></label>
         <label class="pf-field "><span>Email</span><input type="email" name="contact.email" placeholder="you@example.com" autocomplete="off"></label>
         <label class="pf-field "><span>Phone</span><input type="tel" name="contact.phone" placeholder="(555) 555-0100" autocomplete="off"></label>
-        <label class="pf-field "><span>City</span><input type="text" name="contact.city" placeholder="San Antonio" autocomplete="off"></label>
-        <label class="pf-field "><span>State</span><input type="text" name="contact.state" placeholder="TX" autocomplete="off"></label>
-        <label class="pf-field "><span>ZIP code</span><input type="text" name="contact.zip" placeholder="78201" autocomplete="off"></label>
-        <label class="pf-field "><span>Country</span><input type="text" name="contact.country" placeholder="United States" autocomplete="off"></label>
+        <label class="pf-field "><span>Pronouns (optional)</span><input type="text" name="contact.pronouns" placeholder="she/her" autocomplete="off"></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Address</legend>
+      <div class="pf-grid">
+        <label class="pf-field wide"><span>Street address</span><input type="text" name="address.street" placeholder="123 Main St" autocomplete="off"></label>
+        <label class="pf-field "><span>Apt, suite (optional)</span><input type="text" name="address.apt" placeholder="Apt 4B" autocomplete="off"></label>
+        <label class="pf-field "><span>City</span><input type="text" name="address.city" placeholder="San Antonio" autocomplete="off"></label>
+        <label class="pf-field "><span>State</span><input type="text" name="address.state" placeholder="TX" autocomplete="off"></label>
+        <label class="pf-field "><span>ZIP code</span><input type="text" name="address.zip" placeholder="78201" autocomplete="off"></label>
+        <label class="pf-field "><span>Country</span><input type="text" name="address.country" placeholder="United States" autocomplete="off"></label>
       </div>
     </fieldset>
 
@@ -140,16 +149,28 @@
       </div>
     </fieldset>
 
-    <fieldset class="pf-section"><legend>Work authorization and preferences</legend>
+    <fieldset class="pf-section"><legend>Work authorization</legend>
       <div class="pf-grid">
         <label class="pf-field"><span>Authorized to work in the US?</span><select name="work.authorizedUS"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
         <label class="pf-field"><span>Need visa sponsorship now or later?</span><select name="work.needsSponsorship"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label class="pf-field "><span>Visa or status (if any)</span><input type="text" name="work.visaStatus" placeholder="H-1B, Green Card, Citizen…" autocomplete="off"></label>
+        <label class="pf-field"><span>Security clearance</span><select name="work.clearance"><option value="">Choose</option><option value="none">None</option><option value="public-trust">Public Trust</option><option value="secret">Secret</option><option value="top-secret">Top Secret</option><option value="other">Other</option></select></label>
+        <label class="pf-field"><span>Over 18?</span><select name="work.over18"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label class="pf-field"><span>Willing to pass a background check?</span><select name="work.backgroundCheck"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label class="pf-field"><span>Willing to take a drug test?</span><select name="work.drugTest"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
         <label class="pf-field"><span>Willing to relocate?</span><select name="work.willingToRelocate"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label class="pf-field wide"><span>Worked for any of these before? (optional)</span><input type="text" name="work.formerEmployee" placeholder="Company names" autocomplete="off"></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Job preferences</legend>
+      <div class="pf-grid">
         <label class="pf-field"><span>Work type</span><select name="work.workType"><option value="">Choose</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">On site</option><option value="any">Any</option></select></label>
         <label class="pf-field "><span>Notice period</span><input type="text" name="work.noticePeriod" placeholder="2 weeks" autocomplete="off"></label>
         <label class="pf-field "><span>Earliest start date</span><input type="text" name="work.startDate" placeholder="Immediately" autocomplete="off"></label>
         <label class="pf-field "><span>Desired salary (min, USD)</span><input type="text" name="work.salaryMin" placeholder="90000" autocomplete="off"></label>
         <label class="pf-field "><span>Desired salary (max, USD)</span><input type="text" name="work.salaryMax" placeholder="130000" autocomplete="off"></label>
+        <label class="pf-field wide"><span>How did you hear about us? (default)</span><input type="text" name="work.howHeard" placeholder="LinkedIn" autocomplete="off"></label>
       </div>
     </fieldset>
 
@@ -163,12 +184,37 @@
       <button type="button" class="btn pf-add" data-add="edu">Add education</button>
     </fieldset>
 
-    <fieldset class="pf-section"><legend>Skills</legend>
-      <label class="pf-field wide"><span>Separate with commas</span><textarea name="skills" rows="2" placeholder=".NET, C#, SQL Server, Azure, React"></textarea></label>
+    <fieldset class="pf-section"><legend>Skills, certifications, languages</legend>
+      <div class="pf-grid">
+        <label class="pf-field wide"><span>Skills (separate with commas)</span><textarea name="skills" rows="2" placeholder=".NET, C#, SQL Server, Azure"></textarea></label>
+        <label class="pf-field wide"><span>Certifications (commas)</span><textarea name="certifications" rows="2" placeholder="AWS Certified Developer"></textarea></label>
+        <label class="pf-field wide"><span>Languages (commas)</span><textarea name="languages" rows="2" placeholder="English, Spanish"></textarea></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>References (up to 3)</legend>
+      <div id="pf-ref" class="pf-list"></div>
+      <button type="button" class="btn pf-add" data-add="ref">Add a reference</button>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Your own answers</legend>
+      <p class="note">Questions that come up often in applications. Each answer is reused when a form asks the same thing.</p>
+      <div id="pf-qa" class="pf-list"></div>
+      <button type="button" class="btn pf-add" data-add="qa">Add a question and answer</button>
     </fieldset>
 
     <fieldset class="pf-section"><legend>Summary</legend>
-      <label class="pf-field wide"><span>A few lines about you and what you're looking for</span><textarea name="summary" rows="3"></textarea></label>
+      <label class="pf-field wide"><span>A few lines about you and what you're looking for</span><textarea name="summary" rows="3" placeholder=""></textarea></label>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Equal opportunity (optional)</legend>
+      <p class="note">Many employers ask these. They're voluntary, and you can skip any of them.</p>
+      <div class="pf-grid">
+        <label class="pf-field"><span>Gender</span><select name="eeo.gender"><option value="">Choose</option><option value="female">Female</option><option value="male">Male</option><option value="non-binary">Non-binary</option><option value="decline">Prefer not to say</option></select></label>
+        <label class="pf-field"><span>Race or ethnicity</span><select name="eeo.ethnicity"><option value="">Choose</option><option value="hispanic">Hispanic or Latino</option><option value="asian">Asian</option><option value="black">Black or African American</option><option value="white">White</option><option value="native">American Indian or Alaska Native</option><option value="pacific">Native Hawaiian or Pacific Islander</option><option value="two-or-more">Two or more races</option><option value="decline">Prefer not to say</option></select></label>
+        <label class="pf-field"><span>Veteran status</span><select name="eeo.veteran"><option value="">Choose</option><option value="veteran">Protected veteran</option><option value="not-veteran">Not a veteran</option><option value="decline">Prefer not to say</option></select></label>
+        <label class="pf-field"><span>Disability</span><select name="eeo.disability"><option value="">Choose</option><option value="yes">Yes, I have a disability</option><option value="no">No, I don't</option><option value="decline">Prefer not to say</option></select></label>
+      </div>
     </fieldset>
 
     <fieldset class="pf-section"><legend>Resume</legend>
