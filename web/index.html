@@ -28,6 +28,7 @@
     <button role="tab" data-tab="jobs" aria-selected="true">Jobs</button>
     <button role="tab" data-tab="companies" aria-selected="false">Companies</button>
     <button role="tab" data-tab="saved" aria-selected="false">Saved</button>
+    <button role="tab" data-tab="applications" aria-selected="false">Applications</button>
     <button role="tab" data-tab="coverage" aria-selected="false">Coverage</button>
     <button role="tab" data-tab="admin" aria-selected="false" id="admin-tab" hidden>Admin</button>
   </nav>
@@ -84,6 +85,11 @@
   <section id="tab-saved" class="tab" hidden>
     <p id="saved-msg" class="note"></p>
     <ol id="saved" class="list"></ol>
+  </section>
+
+  <section id="tab-applications" class="tab" hidden>
+    <p class="note">Every job you're tracking. Each application keeps its status, notes, versions, and a receipt once you record a submission.</p>
+    <div id="apps-root"></div>
   </section>
 
   <section id="tab-coverage" class="tab" hidden>
@@ -266,6 +272,7 @@
     <dl id="sheet-body" class="facts"></dl>
     <section id="sheet-desc" class="jd" aria-live="polite"></section>
     <section id="sheet-fit" class="fit" hidden></section>
+    <section id="sheet-apply-kit" class="fit" hidden></section>
     <p class="note">Applications are submitted on the employer’s site. Job Compass doesn’t apply for you.</p>
     <div class="sheet-actions">
       <a id="sheet-apply" class="btn primary" href="#" target="_blank" rel="noopener">Apply on employer site</a>
@@ -273,6 +280,9 @@
     </div>
   </div>
 </aside>
+
+<dialog id="tailor-dialog" class="signin profile-dialog" aria-labelledby="tailor-root"><div id="tailor-root"></div></dialog>
+<dialog id="review-dialog" class="signin profile-dialog" aria-labelledby="review-root"><div id="review-root"></div></dialog>
 
 <script src="vendor/index.js"></script>
 <script type="module" src="app.js"></script>
