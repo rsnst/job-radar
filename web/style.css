@@ -455,3 +455,5 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 .resume-drop:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
 .resume-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .resume-dialog textarea { min-height: 160px; }
+#resume-open { right: 128px; }
+@media (max-width: 600px) { #resume-open { right: 112px; } }
