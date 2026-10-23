@@ -358,7 +358,7 @@ function reviewStep() {
     <table class="answers"><tbody>${answers}${custom}</tbody></table>
     <h3>Application automation</h3>
     <p class="note">Start a Job Compass run to have the application worker handle supported ATS steps. You can opt into hands-free submission in My profile; otherwise it pauses for your final approval. It stops when an answer is missing or a security check needs you.</p>
-    <ul class="checklist"><li>Job Compass currently automates Workday only; other ATSes remain preparation-only.</li><li>Account credentials and Gmail OTP retrieval are not connected yet.</li><li>CAPTCHA, required attestations, and unknown answers stop the worker for you.</li></ul>
+    <ul class="checklist"><li>Job Compass currently automates Workday only; other ATSes remain preparation-only.</li><li>Employer accounts and email verification run only if you turned them on in your apply settings; the worker uses a Job Compass address, not your inbox.</li><li>CAPTCHA, required attestations, and unknown answers stop the worker for you.</li></ul>
     <label class="pf-check wide approve"><input type="checkbox" id="flow-approve" data-act="approve" ${st.approved ? "checked" : ""} ${blocked ? "disabled" : ""}>
       I've checked the profile and tailored resume. Job Compass may use them for this application.</label>
     <div class="sheet-actions">

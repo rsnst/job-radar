@@ -2,6 +2,9 @@ import { chromium } from "playwright";
 import { resumeToPdf } from "../../web/resume-pdf.js";
 import { fillWorkdayPage } from "./workday.js";
 import { pathToFileURL } from "node:url";
+import { handleAccount } from "./accounts.js";
+import { loadKey } from "./vault.js";
+import { startInboundServer } from "./inbound.js";
 
 const supaUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -54,7 +57,7 @@ async function userData(run) {
     rest(`profiles?select=text&user_id=eq.${uid}&limit=1`),
     rest(`application_docs?select=body,version,kind&user_id=eq.${uid}&job_key=eq.${key}&kind=eq.resume&order=version.desc&limit=1`),
   ]);
-  return { profile: cleanProfile(profiles[0]?.data), sourceResume: resumes[0]?.text || "", resume: docs[0]?.body || "", resumeVersion: docs[0]?.version || null };
+  return { profile: cleanProfile(profiles[0]?.data), settings: { createAccounts: profiles[0]?.data?.autoApply?.createAccounts === true }, sourceResume: resumes[0]?.text || "", resume: docs[0]?.body || "", resumeVersion: docs[0]?.version || null };
 }
 
 async function waitForDecision(run, page) {
@@ -86,7 +89,7 @@ export async function processRun(run) {
     return;
   }
   await setRun(run, { status: "running", stage: "opening", message: "Opening the Workday application in the Job Compass worker." });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
   const context = await browser.newContext({ acceptDownloads: true });
   const page = await context.newPage();
   try {
@@ -100,11 +103,10 @@ export async function processRun(run) {
       await setRun(run, { status: "needs_user", stage: "security-check", message: "Workday presented a CAPTCHA or security check. Complete it manually and start a new run." });
       return;
     }
-    const pw = page.locator('input[type="password"]');
-    if (await pw.count()) {
-      await setRun(run, { status: "needs_user", stage: "account", message: "This Workday tenant requires an account sign-in or creation. Account credentials and verification are not configured in Job Compass yet." });
-      return;
-    }
+    const acctCtx = { run, rest, key: loadKey(), domain: process.env.INBOX_DOMAIN || "", settings: data.settings,
+      verifyMs: Number(process.env.VERIFY_WAIT_MS) || 120_000, verifyPollMs: Number(process.env.VERIFY_POLL_MS) || 3000 };
+    const acct0 = await handleAccount(page, acctCtx);
+    if (acct0) { await setRun(run, acct0.stop); return; }
     const apply = page.getByRole("button", { name: /^(apply|apply now|apply for this job)$/i }).first();
     const applyLink = page.getByRole("link", { name: /^(apply|apply now|apply for this job)$/i }).first();
     if (await apply.count()) await apply.click().catch(() => {});
@@ -118,10 +120,8 @@ export async function processRun(run) {
         await setRun(run, { status: "needs_user", stage: "security-check", message: "A CAPTCHA or security check appeared. Complete it manually; Job Compass will not attempt to bypass it.", result: { filled_fields: allFilled, missing_fields: allMissing } });
         return;
       }
-      if (await page.locator('input[type="password"]:visible').count()) {
-        await setRun(run, { status: "needs_user", stage: "account", message: "This Workday step requires account sign-in or creation. Account automation and Gmail verification are not configured yet.", result: { filled_fields: allFilled, missing_fields: allMissing } });
-        return;
-      }
+      const acct = await handleAccount(page, acctCtx);
+      if (acct) { await setRun(run, { ...acct.stop, result: { filled_fields: allFilled, missing_fields: allMissing } }); return; }
       const result = await fillWorkdayPage(page, data.profile);
       allFilled = [...new Map([...allFilled, ...result.filled].map((x) => [x.label, x])).values()];
       allMissing = [...new Set([...allMissing, ...result.missing])];
@@ -199,6 +199,7 @@ async function claimOne() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log("Job Compass Workday worker is polling the private application queue.");
+  if (startInboundServer({ rest })) console.log("Inbound verification-mail webhook is listening.");
   for (;;) {
     try {
       const run = await claimOne();

@@ -36,3 +36,10 @@ test("cleanAutoApply caps lists and bounds the salary floor", () => {
   assert.deepEqual(c.keywords, ["a", "b"]);
   assert.equal(c.minSalary, 1000000);
 });
+
+test("account creation and unattended submission are separate opt-ins that default to off", () => {
+  assert.equal(cleanAutoApply({}).createAccounts, false);
+  assert.equal(cleanAutoApply({ createAccounts: "yes" }).createAccounts, false);
+  assert.equal(cleanAutoApply({ createAccounts: true }).createAccounts, true);
+  assert.equal(cleanAutoApply({ createAccounts: true }).autoSubmit, false);
+});
