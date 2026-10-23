@@ -52,11 +52,14 @@ CREATE INDEX jobs_seen ON jobs(seen);
 CREATE INDEX jobs_board ON jobs(board);
 CREATE INDEX boards_jobs ON boards(jobs DESC);
 CREATE INDEX boards_ats ON boards(ats, jobs DESC);
-CREATE VIRTUAL TABLE jobs_fts USING fts5(title, company, loc, content='jobs', content_rowid='id',
-    tokenize="unicode61 remove_diacritics 2 tokenchars '#+'");
+-- The browser's sql.js-httpvfs bundle embeds SQLite 3.35. Keep the on-disk
+-- full-text format compatible with that runtime; newer FTS5 indexes can fail
+-- to initialize there even though the database builder can create them.
+CREATE VIRTUAL TABLE jobs_fts USING fts4(title, company, loc, content='jobs',
+    tokenize=unicode61 "remove_diacritics=2" "tokenchars=#+");
 INSERT INTO jobs_fts(rowid, title, company, loc) SELECT id, title, company, loc FROM jobs;
 INSERT INTO jobs_fts(jobs_fts) VALUES('optimize');
-CREATE VIRTUAL TABLE boards_fts USING fts5(company, url, content='boards', content_rowid='id');
+CREATE VIRTUAL TABLE boards_fts USING fts4(company, url, content='boards');
 INSERT INTO boards_fts(rowid, company, url) SELECT id, company, url FROM boards;
 INSERT INTO boards_fts(boards_fts) VALUES('optimize');
 """
