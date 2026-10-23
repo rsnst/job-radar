@@ -283,44 +283,7 @@ dialog.signin input { font: inherit; padding: .6rem .7rem; border: 1px solid var
 #tab-admin th { color: var(--muted); font-weight: 500; }
 #tab-admin td:not(:first-child), #tab-admin th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ---------- Job Compass: warm theme, job cards in a grid ---------- */
-:root {
-  --bg: #fbf1e1;            /* warm linen */
-  --surface: #fffcf6;
-  --ink: #2a1608;          /* espresso ink */
-  --muted: #8a6248;
-  --line: #f0d9bd;
-  --line-strong: #dfb995;
-  --accent: #c2410c;       /* brick */
-  --accent-hover: #9a3412;
-  --accent-ink: #b43c0b;
-  --accent-soft: #ffe8d1;
-  --focus: rgba(194, 65, 12, .3);
-  --ok: #3f7d2e; --ok-soft: #e3f3d9;
-  --warn: #a15c00; --warn-soft: #ffefc7;
-  --shadow: 0 1px 0 rgba(43, 31, 21, .04), 0 6px 18px -14px rgba(43, 31, 21, .3);
-  --display: "Fraunces", Georgia, "Times New Roman", serif;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #211509; --surface: #30200f; --ink: #fbeedd; --muted: #c9a989;
-    --line: #4a3420; --line-strong: #634a2c;
-    --accent: #fb9a4b; --accent-hover: #fdb274; --accent-ink: #fdb27a;
-    --accent-soft: #46290f; --focus: rgba(251, 154, 75, .32);
-    --ok: #b5dc8f; --ok-soft: #22361a; --warn: #f5c86b; --warn-soft: #3a2a0c;
-    --shadow: none; color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #211509; --surface: #30200f; --ink: #fbeedd; --muted: #c9a989;
-  --line: #4a3420; --line-strong: #634a2c;
-  --accent: #fb9a4b; --accent-hover: #fdb274; --accent-ink: #fdb27a;
-  --accent-soft: #46290f; --focus: rgba(251, 154, 75, .32);
-  --ok: #b5dc8f; --ok-soft: #22361a; --warn: #f5c86b; --warn-soft: #3a2a0c;
-  --shadow: none; color-scheme: dark;
-}
-body { background: var(--bg); }
+/* ---------- job cards in a grid (one theme: corporate blue, defined above) ---------- */
 
 .list {
   list-style: none; margin: 16px 0 0; padding: 0;
@@ -341,13 +304,13 @@ body { background: var(--bg); }
 .card-title { min-width: 0; }
 .mono {
   flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
-  font: 600 .95rem/1 var(--display); color: hsl(var(--h) 85% 32%); background: hsl(var(--h) 95% 90%);
+  font: 600 .95rem/1 var(--f); color: hsl(var(--h) 60% 28%); background: hsl(var(--h) 95% 90%);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .mono { color: hsl(var(--h) 95% 78%); background: hsl(var(--h) 60% 24%); }
 }
 :root[data-theme="dark"] .mono { color: hsl(var(--h) 95% 78%); background: hsl(var(--h) 60% 24%); }
-.card .t { font: 600 1.08rem/1.25 var(--display); margin: 0 0 3px; text-wrap: balance; }
+.card .t { font: 600 1.08rem/1.25 var(--f); margin: 0 0 3px; text-wrap: balance; }
 .card .t a { color: var(--ink); text-decoration: none; }
 .card .t a:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
 .card .co { font-size: .9rem; color: var(--muted); }
@@ -400,7 +363,7 @@ body { background: var(--bg); }
 /* ---------- admin: sweep controls, progress bar, run history */
 #admin-runs { margin-bottom: 28px; }
 .run-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
-.run-head h3, .hist-title { font: 600 1.05rem var(--display); margin: 0 0 4px; }
+.run-head h3, .hist-title { font: 600 1.05rem var(--f); margin: 0 0 4px; }
 .run-head .note { margin: 0; }
 .hist-title { margin-top: 26px; }
 .bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--line); margin: 14px 0 8px; }
@@ -438,7 +401,7 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 /* ---------- AI fit check in the job panel */
 .fit { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .fit h3 { margin: 0 0 6px; font-size: .95rem; }
-.fit .score { font: 600 1.6rem var(--display); margin: 4px 0; color: var(--ok); }
+.fit .score { font: 600 1.6rem var(--f); margin: 4px 0; color: var(--ok); }
 .fit ul { margin: 6px 0 10px; padding-left: 18px; font-size: .9rem; }
 .fit blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); font-size: .88rem; }
 .fit .note { margin: 4px 0; }
