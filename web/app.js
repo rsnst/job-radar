@@ -180,7 +180,14 @@ async function loadJobs(reset) {
     $("#count").textContent = !loaded ? "" : jobsDone ? `${fmt.format(loaded)} job${loaded === 1 ? "" : "s"}` : `Showing ${fmt.format(loaded)} so far`;
     $("#jobs-more").innerHTML = jobsDone ? (loaded ? "That's everything." : "") : '<button type="button" id="more-btn">Load more</button>';
   } catch (e) {
-    if (seq === jobsSeq) $("#jobs").innerHTML = `<li class="err">Query failed: ${esc(e.message || e)}</li>`;
+    if (seq === jobsSeq) {
+      const msg = String(e.message || e);
+      // "malformed" / I/O errors mean the browser read mismatched pieces of the index, usually just after a refresh publishes
+      const stale = /malformed|disk I\/O/i.test(msg);
+      $("#jobs").innerHTML = `<li class="err">${stale
+        ? 'The job index is refreshing, so this search couldn\'t finish. Reload the page in a minute and try again.'
+        : `Query failed: ${esc(msg)}`}</li>`;
+    }
   } finally {
     if (seq === jobsSeq) jobsLoading = false;
     showBytes();

@@ -116,7 +116,13 @@ def run_day(world, tmp: Path, day: date, mode: str):
 
 
 def db_rows(tmp: Path):
-    chunks = sorted((tmp / "site" / "db").glob("db.sqlite3.*"))
+    db_dir = tmp / "site" / "db"
+    cfg = json.loads((db_dir / "config.json").read_text())
+    chunks = sorted(db_dir.glob("db.sqlite3.*"))
+    # chunk names carry the build version, so one name never holds two builds' bytes
+    assert cfg["urlPrefix"] == f"db.sqlite3.{cfg['cacheBust']}."
+    assert [c.name for c in chunks] == [f"{cfg['urlPrefix']}{i:03d}" for i in range(len(chunks))]
+    assert sum(c.stat().st_size for c in chunks) == cfg["databaseLengthBytes"]
     raw = b"".join(c.read_bytes() for c in chunks)
     p = tmp / "check.sqlite3"
     p.write_bytes(raw)
