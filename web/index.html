@@ -268,9 +268,11 @@
       <label class="field"><span>Resume text</span><textarea id="profile-text" rows="8" maxlength="20000" placeholder="Paste your resume here"></textarea></label>
       <p class="note"><span id="profile-count">0</span> / 20,000 characters</p>
       <div class="sheet-actions">
+        <button type="button" id="profile-import" class="btn">Fill profile from this resume</button>
         <button type="button" id="profile-save" class="btn">Save resume</button>
         <button type="button" id="profile-delete" class="btn">Delete resume</button>
       </div>
+      <p class="note"><strong>Fill profile from this resume</strong> copies name, contact, jobs, education and skills into blank fields above. It never overwrites what you typed, and never fills work authorization, EEO or salary. Review, then Save profile.</p>
       <p class="note">Job Compass uses this profile to prepare and run supported applications from the Apply flow.</p>
     </fieldset>
 
@@ -319,6 +321,7 @@
 
 <dialog id="flow-dialog" class="signin profile-dialog flow-dialog" aria-label="Application"><div id="flow-root"></div></dialog>
 <dialog id="gate-dialog" class="signin profile-dialog" aria-label="Apply"><div id="gate-root"></div></dialog>
+<dialog id="intake-dialog" class="signin profile-dialog" aria-label="Add a job"><div id="intake-root"></div></dialog>
 
 <script src="vendor/index.js"></script>
 <script type="module" src="app.js"></script>

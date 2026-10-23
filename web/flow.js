@@ -1,8 +1,10 @@
 // The in-app application flow: prepare materials, verify answers, then queue a supported ATS run.
 // Demo jobs (demo:// addresses) run against a mock application page inside this app with synthetic data.
 import { account } from "./account.js";
-import { DEMO_JOB, FIELDS, applyAnswers, draftSource, getPath, isDemoJob, missingRequired, reviewBlockers, STEP_LABEL, supportText } from "./flow-model.js";
+import { DEMO_JOB, FIELDS, addCustomAnswer, applyAnswers, draftSource, getPath, isDemoJob, missingRequired, reviewBlockers, STEP_LABEL, supportText } from "./flow-model.js";
 import { resumeToPdf } from "./resume-pdf.js";
+import { atsCheck, atsNormalize } from "./resume-ats.js";
+import { textToDocx } from "./docx-lite.js";
 import { getApplication, saveStatus, saveDoc, draftFor, loadProfile, saveProfile, postingHtml, resetDemo, startApplicationRun, getApplicationRun, getApplicationRuns, decideApplicationRun } from "./store.js";
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -70,6 +72,7 @@ export async function openFlow(job) {
     return render();
   }
   st.profile = p.value.profile || {};
+  st.stored = structuredClone(st.profile); // what is saved; st.profile can also hold answers kept for this application only
   st.app = a.value.ok ? a.value.data : { application: null, docs: [] };
   st.run = runs.ok ? runs.value?.data?.runs?.[0] || null : null;
   if (!a.value.ok) {
@@ -213,14 +216,25 @@ function materialsStep() {
     <label class="pf-field wide"><span>${kind === "resume" ? "Your tailored resume (edit me)" : "Your cover letter (edit me)"}</span>
       <textarea id="flow-body" rows="12" maxlength="${MAX_TEXT}">${esc(body)}</textarea></label>
     <p class="note" id="flow-count">${body.length.toLocaleString()} / ${MAX_TEXT.toLocaleString()}</p>
+    ${kind === "resume" ? atsPanel(body) : ""}
     <div class="sheet-actions">
       <button type="button" class="btn primary" data-act="save-version">Save as new version</button>
       <button type="button" class="btn" data-act="draft">Draft again</button>
     </div>
+    ${kind === "resume" ? downloadButtons() : ""}
     <p id="flow-msg" class="note" role="status"></p>
     ${versionsList(kind)}
     ${nav({ next: "answers" })}`;
 }
+
+// What an applicant-tracking parser would trip on, and the formats that parse cleanly.
+const atsListHtml = (body) => atsCheck(body).map((c) => `<li class="${c.ok ? "ok" : "warn"}"><strong>${c.ok ? "OK" : "Fix"}:</strong> ${esc(c.label)}. <span class="note">${esc(c.detail)}</span></li>`).join("");
+const atsPanel = (body) => `<details class="ats" open><summary>ATS check</summary><ul class="ats-list" id="flow-ats-list">${atsListHtml(body)}</ul></details>`;
+const downloadButtons = () => `<div class="sheet-actions" aria-label="Download an ATS-friendly resume">
+  <button type="button" class="btn" data-act="download-resume" data-fmt="docx">Download ATS-friendly .docx</button>
+  <button type="button" class="btn" data-act="download-resume" data-fmt="pdf">.pdf</button>
+  <button type="button" class="btn" data-act="download-resume" data-fmt="txt">.txt</button></div>
+  <p class="note">Downloads use plain headings, simple bullets and one column. Your wording isn't changed.</p>`;
 
 function versionsList(kind) {
   const docs = (st.app.docs || []).filter((x) => x.kind === kind);
@@ -244,11 +258,22 @@ function answersStep() {
   const gate = blanks.length
     ? `<p class="warn-box">Answer the ${blanks.length} required question${blanks.length === 1 ? "" : "s"} marked * before you can review: ${esc(blanks.join(", "))}.</p>`
     : `<p class="note">All required questions are answered.</p>`;
-  return `<p class="note">Your answers come from My profile. Only blank questions are editable here. Answers you type are saved to your profile${st.demo ? " (demo: only in this tab)" : ""}.</p>
+  const open = blanks.length || FIELDS.some((f) => !filled(getPath(p, f.path)));
+  const remember = `<label class="pf-check wide"><input type="checkbox" id="flow-remember" checked> Save these answers to my profile for future applications</label>`;
+  const customRows = (p.custom || []).map((q) => `<tr><th scope="row">${esc(q.question)}</th><td>${esc(q.answer)}${q.local ? ' <span class="note">(this application only)</span>' : ""}</td></tr>`).join("");
+  return `<p class="note">Your answers come from My profile. Blank questions are editable here${st.demo ? " (demo: nothing leaves this tab)" : ""}.</p>
     ${gate}
-    ${blanks.length || FIELDS.some((f) => !filled(getPath(p, f.path))) ? `<form id="flow-answers" class="answers-form"><table class="answers"><tbody>${rows}</tbody></table>
+    ${open ? `<form id="flow-answers" class="answers-form"><table class="answers"><tbody>${rows}</tbody></table>${remember}
       <div class="sheet-actions"><button type="button" class="btn" data-act="save-answers">Save answers</button></div></form>`
       : `<table class="answers"><tbody>${rows}</tbody></table>`}
+    <h3>Another question on this employer's form?</h3>
+    <p class="note">Type the question as the form asks it, and your own answer. Nothing is guessed for you.</p>
+    <form id="flow-custom" class="answers-form">
+      <label class="pf-field wide"><span>Question</span><textarea id="flow-cq" rows="2" maxlength="300"></textarea></label>
+      <label class="pf-field wide"><span>Your answer</span><textarea id="flow-ca" rows="3" maxlength="1500"></textarea></label>
+      <label class="pf-check wide"><input type="checkbox" id="flow-cremember" checked> Remember this answer in my profile</label>
+      <div class="sheet-actions"><button type="button" class="btn" data-act="save-custom">Add answer</button></div></form>
+    ${customRows ? `<h3>Questions you've answered</h3><table class="answers"><tbody>${customRows}</tbody></table>` : ""}
     <p id="flow-msg" class="note" role="status"></p>
     ${nav({ next: "account", nextDisabled: blanks.length > 0, nextLabel: "Continue to account setup" })}`;
 }
@@ -288,7 +313,7 @@ function reviewStep() {
     const v = getPath(p, f.path);
     return `<tr><th scope="row">${esc(f.label)}</th><td>${filled(v) ? esc(v) : `<span class="needs">Needs your answer</span>`}</td></tr>`;
   }).join("");
-  const custom = (p.custom || []).map((q) => `<tr><th scope="row">${esc(q.question)}</th><td>${esc(q.answer)}</td></tr>`).join("");
+  const custom = (p.custom || []).map((q) => `<tr><th scope="row">${esc(q.question)}</th><td>${esc(q.answer)}${q.local ? ' <span class="note">(this application only)</span>' : ""}</td></tr>`).join("");
   const receipt = st.receipt
     ? `<div class="receipt-box" role="status"><strong>${st.demo ? "Demo receipt" : "Receipt recorded"}</strong>
         <p class="note">You recorded this submission ${esc(fmtDate(st.receipt.at))} · resume v${st.receipt.resume_version ?? "none"} · cover letter ${st.receipt.cover_version ? "v" + st.receipt.cover_version : "not used"}${st.demo ? " · demo only, nothing was sent" : ""}</p></div>` : "";
@@ -328,7 +353,7 @@ function reviewStep() {
         ? `v${cover.version}, drafted by the app${cover.source === "edited" ? " and edited by you" : ""}.`
         : "not saved. Skip it unless the form asks for one."}</li>
     </ul>
-    ${resume ? `<div class="sheet-actions"><button type="button" class="btn" data-act="download-resume">Download tailored resume (.pdf)</button></div>` : ""}
+    ${resume ? `${atsPanel(resume.body)}${downloadButtons()}` : ""}
     <h3>Your answers</h3>
     <table class="answers"><tbody>${answers}${custom}</tbody></table>
     <h3>Application automation</h3>
@@ -462,12 +487,36 @@ async function saveVersion() {
 async function saveAnswers() {
   const answers = {};
   for (const el of document.querySelectorAll("#flow-answers [data-field]")) answers[el.dataset.field] = el.value;
+  const remember = $("#flow-remember")?.checked !== false;
   const next = applyAnswers(st.profile, answers);
-  const r = await saveProfile(next, st.demo);
-  if (!r.ok) return msg(r.error || "Couldn't save your answers. Try again.");
+  if (remember) {
+    // Only saved answers are written to the profile; answers kept for this application stay in this tab.
+    const toSave = applyAnswers(st.stored, answers);
+    const r = await saveProfile(toSave, st.demo);
+    if (!r.ok) return msg(r.error || "Couldn't save your answers. Try again.");
+    st.stored = toSave;
+  }
   st.profile = next;
   render();
-  msg(missingRequired(next).length ? "Saved. Some required answers are still blank." : "Saved. All required answers are in.");
+  const left = missingRequired(next).length;
+  msg(`${remember ? "Saved to your profile." : "Used for this application only. Not saved to your profile."} ${left ? "Some required answers are still blank." : "All required answers are in."}`);
+}
+
+async function saveCustom() {
+  const q = $("#flow-cq")?.value, a = $("#flow-ca")?.value;
+  const remember = $("#flow-cremember")?.checked !== false;
+  const local = addCustomAnswer(st.profile, q, a, { local: !remember });
+  if (!local.ok) return msg(local.error);
+  if (remember) {
+    const saved = addCustomAnswer(st.stored, q, a);
+    if (!saved.ok) return msg(saved.error);
+    const r = await saveProfile(saved.profile, st.demo);
+    if (!r.ok) return msg(r.error || "Couldn't save your answer. Try again.");
+    st.stored = saved.profile;
+    st.profile = addCustomAnswer(st.profile, q, a).profile;
+  } else st.profile = local.profile;
+  render();
+  msg(remember ? "Added, and saved to your profile for next time." : "Added for this application only. Not saved to your profile.");
 }
 
 async function recordStep(step) {
@@ -573,17 +622,26 @@ function answersText() {
   return lines.join("\n");
 }
 
-function downloadResume() {
-  const resume = (st?.app?.docs || []).find((d) => d.kind === "resume");
-  if (!resume?.body) return msg("Save a tailored resume first.");
-  const safe = `${st.job.company || "job"}-${st.job.title || "resume"}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
-  const href = URL.createObjectURL(new Blob([resumeToPdf(resume.body)], { type: "application/pdf" }));
+function downloadResume(fmt = "pdf") {
+  const latest = (st?.app?.docs || []).find((d) => d.kind === "resume");
+  const body = st.step === "materials" ? st.edited.resume : latest?.body;
+  if (!body?.trim()) return msg("Save a tailored resume first.");
+  const text = atsNormalize(body);
+  const safe = `${st.job.company || "job"}-${st.job.title || "resume"}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "tailored-resume";
+  const FORMATS = {
+    docx: [() => textToDocx(text), "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+    txt: [() => text, "text/plain;charset=utf-8"],
+    pdf: [() => resumeToPdf(text), "application/pdf"],
+  };
+  const [make, type] = FORMATS[fmt] || FORMATS.pdf;
+  const ext = FORMATS[fmt] ? fmt : "pdf";
+  const href = URL.createObjectURL(new Blob([make()], { type }));
   const link = document.createElement("a");
   link.href = href;
-  link.download = `${safe || "tailored-resume"}.pdf`;
+  link.download = `${safe}.${ext}`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(href), 1000);
-  msg("PDF resume downloaded. Select it in Workday's resume upload step, then verify what Workday parses.");
+  msg(`ATS-friendly .${ext} downloaded. Symbols and column gaps became plain text; your wording is unchanged. Check what the employer's form parses.`);
 }
 
 async function copyAnswers() {
@@ -617,11 +675,11 @@ export function initFlow() {
     if (act === "approve-run") return guard(() => decideRun("approve"));
     if (act === "reject-run") return guard(() => decideRun("reject"));
     if (act === "cancel-run") return guard(() => decideRun("cancel"));
-    if (act === "download-resume") return downloadResume();
+    if (act === "download-resume") return downloadResume(b.dataset.fmt);
     if (act === "back-review") { st.mock = false; return render(); }
     if (act === "copy") return copyAnswers();
     // Actions that talk to the network: a failure becomes a message, and the applicant can try again.
-    const run = { draft, "save-version": saveVersion, "save-answers": saveAnswers, step: () => recordStep(b.dataset.step), submitted: recordSubmission }[act];
+    const run = { draft, "save-version": saveVersion, "save-answers": saveAnswers, "save-custom": saveCustom, step: () => recordStep(b.dataset.step), submitted: recordSubmission }[act];
     if (run) guard(run);
   });
   root.addEventListener("change", (e) => {
@@ -632,6 +690,7 @@ export function initFlow() {
       st.edited[st.kind] = e.target.value;
       const c = $("#flow-count");
       if (c) c.textContent = `${e.target.value.length.toLocaleString()} / ${MAX_TEXT.toLocaleString()}`;
+      if (st.kind === "resume") { const l = $("#flow-ats-list"); if (l) l.innerHTML = atsListHtml(e.target.value); }
       if (st.kind === "resume") { const d = root.querySelector(".diff"); if (d) d.innerHTML = diffHtml(st.draft?.originalResume || "", e.target.value); }
     }
   });

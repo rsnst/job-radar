@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Add to Job Compass</title>
+<style>
+  body{font:14px/1.4 system-ui,sans-serif;margin:0;padding:14px;width:340px;color:#1b1b1b}
+  h1{font-size:15px;margin:0 0 8px} label{display:block;margin:8px 0 2px;font-size:12px;color:#555}
+  input{width:100%;box-sizing:border-box;padding:6px 8px;font:inherit;border:1px solid #bbb;border-radius:6px}
+  button{margin-top:12px;padding:8px 12px;font:inherit;border:0;border-radius:6px;background:#a4472a;color:#fff;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default} .note{font-size:12px;color:#555;margin:8px 0 0} .err{color:#a00}
+  details{margin-top:10px;font-size:12px}
+</style></head>
+<body>
+<h1>Add this job to Job Compass</h1>
+<div id="form" hidden>
+  <label for="t">Job title</label><input id="t" maxlength="200">
+  <label for="c">Company</label><input id="c" maxlength="200">
+  <label for="u">Link</label><input id="u" readonly>
+  <button id="add">Add to my tracker</button>
+  <p class="note" id="src"></p>
+</div>
+<p id="msg" class="note" role="status">Reading this page…</p>
+<details><summary>Job Compass address</summary>
+  <label for="app">Where your Job Compass is</label><input id="app" placeholder="https://job-radar-tan.vercel.app">
+</details>
+<p class="note">Only the title, company and link of this page are sent, and only to your Job Compass when you click Add. Sign in there to save it.</p>
+<script type="module" src="popup.js"></script>
+</body></html>

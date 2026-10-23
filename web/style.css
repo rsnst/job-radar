@@ -720,3 +720,16 @@ select, .tog { height: 34px; font-size: .79rem; border-color: var(--line); backg
 .workday-guide p { margin: 8px 0 0; }
 .workday-guide ol { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 7px; }
 @media (max-width: 560px) { .mock-row { grid-template-columns: 1fr; gap: 2px; } }
+
+/* ---- profile import, ATS check, intake */
+.imported { outline: 2px solid var(--accent, #a4472a); outline-offset: 1px; border-radius: 4px; }
+.pf-row.imported { outline-style: dashed; }
+.ats { margin: 10px 0; }
+.ats-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: .9rem; }
+.ats-list li.warn strong { color: #a4472a; }
+.ats-list li.ok strong { color: #2f7a4a; }
+.flow-dialog table.answers { width: 100%; table-layout: fixed; }
+.flow-dialog table.answers th { width: 42%; }
+.flow-dialog table.answers td { overflow-wrap: anywhere; }
+.flow-dialog table.answers input, .flow-dialog table.answers select { width: 100%; box-sizing: border-box; }
+.flow-dialog .answers-form { margin: 0; }

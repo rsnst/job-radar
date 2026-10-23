@@ -179,3 +179,19 @@ export function reviewBlockers({ profile, resumeSaved }) {
   if (!resumeSaved) out.push({ step: "materials", text: "Save a tailored resume version first: open Materials, draft it, review it, and save it." });
   return out;
 }
+
+// An employer-specific question the applicant answered. With local=true it is used for this application only
+// (kept in the open flow, never saved to the profile). Existing questions are updated, not duplicated.
+export function addCustomAnswer(profile, question, answer, { local = false } = {}) {
+  const q = String(question || "").trim().slice(0, 300);
+  const a = String(answer || "").trim().slice(0, 1500);
+  if (!q || !a) return { ok: false, error: "Enter both the question and your answer." };
+  const out = structuredClone(profile || {});
+  out.custom = Array.isArray(out.custom) ? out.custom : [];
+  const i = out.custom.findIndex((x) => String(x.question || "").trim().toLowerCase() === q.toLowerCase());
+  const item = { question: i >= 0 ? out.custom[i].question : q, answer: a, ...(local ? { local: true } : {}) };
+  if (i >= 0) out.custom[i] = item;
+  else if (out.custom.length >= 25) return { ok: false, error: "Your profile already holds 25 saved answers. Remove one in My profile first." };
+  else out.custom.push(item);
+  return { ok: true, profile: out, updated: i >= 0 };
+}

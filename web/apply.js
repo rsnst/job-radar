@@ -4,6 +4,7 @@
 import { account, apiFetch } from "./account.js";
 import { matchJob, cleanAutoApply } from "./autoapply.js";
 import { openApplyEntry, openDemo } from "./flow.js";
+import { openAddByLink } from "./intake.js";
 import { STEP_LABEL } from "./flow-model.js";
 import { getApplication, saveStatus, saveDoc, draftFor, postingHtml } from "./store.js";
 
@@ -72,6 +73,9 @@ async function loadKit(job) {
   });
 }
 
+const addJobBar = () => `<div class="sheet-actions"><button type="button" class="btn" data-add-job>Add a job from another site</button>
+  <span class="note">LinkedIn, Indeed or any career page: paste its link, or use the browser extension or your phone's Share menu.</span></div>`;
+
 // ---------- tracker tab
 let trackerFilter = "";
 export async function renderTracker() {
@@ -91,13 +95,14 @@ export async function renderTracker() {
   }
   const apps = r.data.applications || [];
   if (!apps.length) {
-    root.innerHTML = `<p class="empty">No tracked applications yet. Open a job and choose "Apply" to start one.</p>`;
+    root.innerHTML = `<p class="empty">No tracked applications yet. Open a job and choose "Apply" to start one, or add a job you found on another site.</p>${addJobBar()}`;
     return;
   }
   const counts = STATUSES.map(([v, t]) => [v, t, apps.filter((a) => a.status === v).length]).filter(([, , n]) => n);
   const shown = apps.filter((a) => !trackerFilter || a.status === trackerFilter);
   root.innerHTML = `
     <div class="auto-banner"><strong>What the app automates:</strong> it drafts tailored materials for jobs you saved that match your criteria. It never submits applications, creates accounts, or reads your email. You review and submit each one.</div>
+    ${addJobBar()}
     <section id="queue-root" aria-live="polite"></section>
     <div class="ap-summary">${counts.map(([v, t, n]) => `<button type="button" class="chip ${trackerFilter === v ? "on" : ""}" data-f="${v}">${esc(t)} <strong>${n}</strong></button>`).join("")}
       ${trackerFilter ? `<button type="button" class="link" data-f="">Show all</button>` : ""}</div>
@@ -139,7 +144,8 @@ async function renderQueue(apps) {
     <div class="queue">
       <div class="queue-head">
         <h3>Preparation queue <span class="count">${matches.length}</span></h3>
-        <button type="button" class="btn primary" id="queue-run" ${matches.length ? "" : "disabled"}>Prepare next ${Math.min(QUEUE_BATCH, matches.length) || ""}</button>
+        <span><button type="button" class="btn primary" id="queue-run" ${matches.length ? "" : "disabled"}>Prepare next ${Math.min(QUEUE_BATCH, matches.length) || ""}</button>
+          <button type="button" class="btn" id="queue-stop" hidden>Stop</button></span>
       </div>
       <p class="note">Each job here gets a draft resume and cover letter from your profile. Nothing is submitted. Open a job to review and submit it yourself. Up to ${QUEUE_BATCH} drafts per click.</p>
       ${matches.length ? `<ol class="queue-list">${matches.map((a) => `<li><span>${esc(a.job?.title || "Untitled role")}</span> <span class="note">${esc(a.job?.company || "")}${a.job?.loc ? " · " + esc(a.job.loc) : ""}</span></li>`).join("")}</ol>`
@@ -150,18 +156,23 @@ async function renderQueue(apps) {
   $("#queue-run")?.addEventListener("click", () => runQueue(matches.slice(0, QUEUE_BATCH)));
 }
 
+let queueStop = false;
 async function runQueue(list) {
   const msg = $("#queue-msg");
   const run = $("#queue-run");
+  const stop = $("#queue-stop");
   run.disabled = true;
+  queueStop = false; stop.hidden = false;
+  stop.onclick = () => { queueStop = true; stop.disabled = true; msg.textContent = "Stopping after this draft…"; };
   let done = 0;
   for (const app of list) {
+    if (queueStop) { msg.textContent = `Stopped. ${done} prepared.`; break; }
     msg.textContent = `Preparing ${done + 1} of ${list.length}: ${app.job?.title || "job"}…`;
     const res = await prepareOne(app);
     if (res.ok) done++;
     else { msg.textContent = `${res.reason}${res.stop ? "" : " Stopped here."} ${done} prepared.`; break; }
   }
-  if (done === list.length) msg.textContent = `${done} prepared. Open each one from the job to review it.`;
+  if (!queueStop && done === list.length) msg.textContent = `${done} prepared. Open each one from the job to review it.`;
   renderTracker();
 }
 
@@ -213,5 +224,6 @@ export function initApply() {
   });
   $("#apps-root").addEventListener("click", (e) => {
     if (e.target.closest("[data-demo]")) openDemo();
+    if (e.target.closest("[data-add-job]")) openAddByLink();
   });
 }
