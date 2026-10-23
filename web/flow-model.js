@@ -155,3 +155,13 @@ export function supportText(ats) {
   const name = ats ? String(ats) : "This employer's site";
   return `${name}: the app doesn't fill or submit this form. You complete the account and application steps yourself. Pre-fill isn't built for this platform yet.`;
 }
+
+// Which posting text a draft is checked against. The employer's text wins. Pasted text is used only when
+// there is none, and it is labelled as unverified. Returns { text, source } with source "" when there is nothing.
+export function draftSource({ posting = "", pasted = "" } = {}) {
+  const p = String(posting || "").trim();
+  if (p) return { text: p, source: "employer" };
+  const q = String(pasted || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (q) return { text: q, source: "pasted" };
+  return { text: "", source: "" };
+}

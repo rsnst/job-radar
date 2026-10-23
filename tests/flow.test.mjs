@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import * as model from "../web/flow-model.js";
 import * as store from "../web/store.js";
 
-const { DEMO_JOB, DEMO_PROFILE, FIELDS, applyAnswers, buildDemoDraft, getPath, isDemoJob, missingRequired, setPath } = model;
+const { DEMO_JOB, DEMO_PROFILE, FIELDS, applyAnswers, buildDemoDraft, draftSource, getPath, isDemoJob, missingRequired, setPath } = model;
 
 test("setPath returns a new object and leaves the input unchanged", () => {
   const a = { work: { authorizedUS: "yes" } };
@@ -94,4 +94,11 @@ test("demo state resets so one demo can't leak into the next", async () => {
   await store.saveDoc(DEMO_JOB, "resume", "old", [], "ai");
   store.resetDemo();
   assert.equal((await store.getApplication(DEMO_JOB)).data.docs.length, 0);
+});
+
+test("draft source: the employer's text wins, pasted text is used only without it, and blank means none", () => {
+  assert.deepEqual(draftSource({ posting: "Employer text", pasted: "Pasted" }), { text: "Employer text", source: "employer" });
+  assert.deepEqual(draftSource({ posting: "", pasted: "<p>Pasted  text</p>" }), { text: "Pasted text", source: "pasted" });
+  assert.deepEqual(draftSource({ posting: "  ", pasted: "   " }), { text: "", source: "" });
+  assert.deepEqual(draftSource({}), { text: "", source: "" });
 });

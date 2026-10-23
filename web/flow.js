@@ -2,7 +2,7 @@
 // Nothing here submits an application. The applicant opens the employer's page, submits it there, and records it here.
 // Demo jobs (demo:// addresses) run against a mock application page inside this app with synthetic data.
 import { account } from "./account.js";
-import { DEMO_JOB, FIELDS, applyAnswers, getPath, isDemoJob, missingRequired, STEP_LABEL, supportText } from "./flow-model.js";
+import { DEMO_JOB, FIELDS, applyAnswers, draftSource, getPath, isDemoJob, missingRequired, STEP_LABEL, supportText } from "./flow-model.js";
 import { getApplication, saveStatus, saveDoc, draftFor, loadProfile, saveProfile, postingHtml, resetDemo } from "./store.js";
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -49,18 +49,33 @@ export async function openFlow(job) {
   const demo = isDemoJob(job);
   if (demo) resetDemo();
   if (!demo && !account.user) return openGate(job);
-  st = { job, demo, step: "materials", profile: null, app: null, posting: "", draft: null, kind: "resume",
-    edited: { resume: "", cover: "" }, mock: false, approved: false, opened: false, receipt: null, error: "" };
+  st = { job, demo, step: "materials", profile: null, app: null, posting: "", pasted: "", draft: null, kind: "resume",
+    edited: { resume: "", cover: "" }, mock: false, approved: false, opened: false, receipt: null, error: "", retry: null, loadFailed: false };
   const dlg = $("#flow-dialog");
   if (!dlg.open) dlg.showModal();
   paint("<p class=\"note\" role=\"status\">Loading your application…</p>");
-  const [p, a, text] = await Promise.all([loadProfile(demo), getApplication(job), postingHtml(job)]);
+  // Each request is allowed to fail on its own. A failed one shows a message and a retry, never a half-loaded flow.
+  const [p, a, text] = await Promise.all([
+    settle(() => loadProfile(demo), "Couldn't load your profile."),
+    settle(() => getApplication(job), "Couldn't load this application."),
+    settle(() => postingHtml(job), null),
+  ]);
   if (!st || st.job !== job) return;
-  st.posting = plain(text);
-  if (!p.ok) st.error = p.error || "Couldn't load your profile. Try again.";
-  st.profile = p.profile || {};
-  if (!a.ok) st.error = a.data?.error || "Couldn't load this application. Try again.";
-  st.app = a.ok ? a.data : { application: null, docs: [] };
+  st.posting = plain(text.value || "");
+  if (!p.ok || !a.ok) {
+    st.loadFailed = true;
+    st.error = (!p.ok ? p.error : a.error) || "Couldn't load this application.";
+    st.retry = () => openFlow(job);
+    return render();
+  }
+  st.profile = p.value.profile || {};
+  st.app = a.value.ok ? a.value.data : { application: null, docs: [] };
+  if (!a.value.ok) {
+    st.loadFailed = true;
+    st.error = a.value.data?.error || "Couldn't load this application.";
+    st.retry = () => openFlow(job);
+    return render();
+  }
   const latest = (k) => (st.app.docs || []).find((d) => d.kind === k);
   st.edited.resume = latest("resume")?.body || "";
   st.edited.cover = latest("cover")?.body || "";
@@ -119,10 +134,23 @@ function stepper() {
     <span class="flow-n">${i + 1}</span>${esc(label)}</button></li>`).join("")}</ol>`;
 }
 
+// Resolves to { ok, value } or { ok: false, error }. A network failure becomes a message, not an exception.
+async function settle(fn, fallbackError) {
+  try {
+    const value = await fn();
+    if (value && typeof value === "object" && "ok" in value && value.ok === false && fallbackError) return { ok: false, error: value.error || value.data?.error || fallbackError, value };
+    return { ok: true, value };
+  } catch {
+    return { ok: false, error: fallbackError || "Network problem. Check your connection and try again.", value: null };
+  }
+}
+
 function render() {
   if (!st) return;
   const job = st.job;
-  const err = st.error ? `<p class="warn-box" role="alert">${esc(st.error)}</p>` : "";
+  const err = st.error
+    ? `<p class="warn-box" role="alert">${esc(st.error)}${st.retry ? ` <button type="button" class="btn" data-act="retry">Try again</button>` : ""}</p>` : "";
+  if (st.loadFailed) return paint(`${header(job)}${st.demo ? demoBanner() : ""}${err}`);
   let body;
   if (st.mock) body = mockApplication();
   else if (st.step === "materials") body = materialsStep();
@@ -133,18 +161,34 @@ function render() {
 }
 
 // Step 1: tailored resume and cover letter, checked against the posting and the profile.
+// The posting text a draft is checked against. The employer's text wins; pasted text is used only when there is none.
+const draftText = () => draftSource({ posting: st.posting, pasted: st.pasted }).text;
+function postingSource() {
+  const src = draftSource({ posting: st.posting, pasted: st.pasted }).source;
+  if (src === "employer") return "from the employer's posting";
+  if (src === "pasted") return "pasted by you, not checked against the employer's page";
+  return "not available on this site";
+}
+
 function materialsStep() {
-  const hasText = !!st.posting;
+  const hasText = !!draftText();
   const d = st.draft;
   const link = /^https?:\/\//.test(st.job.url) ? `<a href="${esc(st.job.url)}" target="_blank" rel="noopener">Read the posting on the employer's site</a>` : "";
-  const intro = `<p class="note">Drafts use only what's in your profile and resume. Edit anything before you save.</p>`;
+  const intro = `<p class="note">Drafts use only what's in your profile and resume. Edit anything before you save.</p>
+    <p class="note">Posting text: <strong>${esc(postingSource())}</strong>.</p>`;
   if (!hasText) {
-    return `${intro}<p class="warn-box">The posting's text isn't available on this site, so a draft can't be checked against it. ${link}
-      You can still answer questions and review the application.</p>${nav({ next: "answers" })}`;
+    return `${intro}<p class="warn-box">The posting's text isn't available here, so a draft can't be checked against it yet. ${link}</p>
+      <label class="pf-field wide"><span>Paste the posting's text (optional)</span>
+        <textarea id="flow-paste" rows="8" maxlength="20000" placeholder="Copy the job description from the employer's page and paste it here."></textarea></label>
+      <p class="note">Only the text you paste is used. Nothing is fetched or added for you, and it is kept in this tab only.</p>
+      <div class="sheet-actions"><button type="button" class="btn" data-act="use-paste">Use this text for the draft</button></div>
+      <p id="flow-msg" class="note" role="status"></p>${nav({ next: "answers" })}`;
   }
+  const pasteNote = st.pasted && !st.posting
+    ? `<div class="sheet-actions"><button type="button" class="link" data-act="clear-paste">Clear pasted text</button></div>` : "";
   const hasEditor = !!(d || st.edited.resume || st.edited.cover);
   if (!hasEditor) {
-    return `${intro}<div class="sheet-actions"><button type="button" class="btn primary" data-act="draft">Draft resume and cover letter</button></div>
+    return `${intro}${pasteNote}<div class="sheet-actions"><button type="button" class="btn primary" data-act="draft">Draft resume and cover letter</button></div>
       <p id="flow-msg" class="note" role="status"></p>${nav({ next: "answers" })}`;
   }
   const gaps = d?.profileGaps?.length
@@ -158,7 +202,7 @@ function materialsStep() {
   const kind = st.kind;
   const body = st.edited[kind];
   const diff = kind === "resume" ? `<div class="diff" aria-label="Changes from your original resume">${diffHtml(d?.originalResume || "", body)}</div>` : "";
-  return `${intro}${gaps}${missing}${flags}${notes}
+  return `${intro}${pasteNote}${gaps}${missing}${flags}${notes}
     <div class="tabs-inline" role="tablist">
       <button type="button" role="tab" data-act="kind" data-kind="resume" aria-selected="${kind === "resume"}">Resume</button>
       <button type="button" role="tab" data-act="kind" data-kind="cover" aria-selected="${kind === "cover"}">Cover letter</button>
@@ -315,6 +359,20 @@ function lineDiffLocal(before, after) {
 
 // ---------- actions
 function msg(t) { const m = $("#flow-msg"); if (m) m.textContent = t; }
+// A thrown request (no connection, a closed tab) is reported in place, so the applicant can retry.
+async function guard(fn) {
+  try { await fn(); }
+  catch { msg("Network problem. Check your connection, then try again."); }
+}
+function usePaste() {
+  const text = ($("#flow-paste")?.value || "").trim();
+  if (!text) return msg("Paste the posting's text first.");
+  st.pasted = text;
+  st.draft = null;
+  st.error = "";
+  render();
+  msg("Using the text you pasted. Draft when ready.");
+}
 function currentStatus() { return st.app.application?.status || "preparing"; }
 
 async function reloadApp() {
@@ -324,21 +382,26 @@ async function reloadApp() {
 
 async function draft() {
   const job = st.job;
-  const text = st.posting;
+  const text = draftText();
+  if (!text) { st.error = "Add the posting's text first, then draft."; return render(); }
   paint(`${header(job)}${st.demo ? demoBanner() : ""}${stepper()}<p class="note" role="status">Drafting from your profile and resume. Only facts you've entered are used.</p>
     <div class="skeleton" aria-hidden="true" style="height:120px"></div>`);
-  const r = await draftFor(job, text);
+  const r = await settle(() => draftFor(job, text), "Couldn't draft right now.");
   if (st.job !== job) return;
-  if (!r.ok) {
-    st.error = r.data?.error || "Couldn't draft right now. Try again.";
-    if (r.data?.needsProfile) st.error = "Fill in My profile first, then draft again.";
+  if (!r.ok || !r.value.ok) {
+    const data = r.value?.data || {};
+    st.error = r.ok ? (data.error || "Couldn't draft right now.") : r.error;
+    if (data.needsProfile) { st.error = "Fill in My profile first, then draft again."; st.retry = null; }
+    else st.retry = draft;
     st.step = "materials";
     return render();
   }
+  const r2 = r.value;
+  st.retry = null;
   st.error = "";
-  st.draft = r.data;
-  st.edited.resume = r.data.resume;
-  st.edited.cover = r.data.cover;
+  st.draft = r2.data;
+  st.edited.resume = r2.data.resume;
+  st.edited.cover = r2.data.cover;
   render();
 }
 
@@ -383,7 +446,11 @@ function openEmployer() {
   window.open(st.job.url, "_blank", "noopener");
   st.opened = true;
   const pre = !st.app.application || st.app.application.status === "saved";
-  if (pre) saveStatus(st.job, "preparing", st.app.application?.notes || "").then(reloadApp).then(render);
+  if (pre) {
+    saveStatus(st.job, "preparing", st.app.application?.notes || "")
+      .then(reloadApp).then(render)
+      .catch(() => msg("Opened the employer's page, but the tracker couldn't record it yet."));
+  }
   render();
   msg("Opened the employer's page. Come back here to record the submission.");
 }
@@ -439,10 +506,9 @@ export function initFlow() {
     if (act === "close") return dlg.close();
     if (act === "go") { st.step = b.dataset.step; st.mock = false; return render(); }
     if (act === "kind") { st.kind = b.dataset.kind; return render(); }
-    if (act === "draft") return draft();
-    if (act === "save-version") return saveVersion();
-    if (act === "save-answers") return saveAnswers();
-    if (act === "step") return recordStep(b.dataset.step);
+    if (act === "retry") { const f = st.retry; st.retry = null; st.error = ""; return f && f(); }
+    if (act === "use-paste") return usePaste();
+    if (act === "clear-paste") { st.pasted = ""; st.draft = null; return render(); }
     if (act === "load") {
       const doc = (st.app.docs || []).find((x) => String(x.id) === b.dataset.id);
       if (doc) { st.edited[st.kind] = doc.body; render(); }
@@ -451,7 +517,9 @@ export function initFlow() {
     if (act === "open") return openEmployer();
     if (act === "back-review") { st.mock = false; return render(); }
     if (act === "copy") return copyAnswers();
-    if (act === "submitted") return recordSubmission();
+    // Actions that talk to the network: a failure becomes a message, and the applicant can try again.
+    const run = { draft, "save-version": saveVersion, "save-answers": saveAnswers, step: () => recordStep(b.dataset.step), submitted: recordSubmission }[act];
+    if (run) guard(run);
   });
   root.addEventListener("change", (e) => {
     if (e.target.id === "flow-approve") { st.approved = e.target.checked; render(); }
