@@ -10,6 +10,9 @@ const CAPTCHA = 'iframe[src*="captcha"], [id*="captcha" i], [class*="captcha" i]
 const EMAIL = 'input[type="email"]:visible, input[name*="email" i]:visible, input[autocomplete="username"]:visible';
 const CODE = 'input[autocomplete="one-time-code"]:visible, input[name*="code" i]:visible, input[aria-label*="code" i]:visible';
 const testLocal = (u) => process.env.NODE_ENV === "test" && process.env.WORKER_TEST_ALLOW_LOCAL === "1" && ["localhost", "127.0.0.1"].includes(new URL(u).hostname);
+const LEGAL = /terms|privacy|agree|consent|certif(y|ication)|authori[sz]e|declaration|attest|acknowledge|conditions/i;
+const ACCOUNT_TERMS = /(terms|privacy|conditions|user agreement)/i;
+const NOT_TERMS = /certif|authori[sz]|declaration|attest|declar|marketing|newsletter|promotion|text message|sms|share my|third part|background|disabilit|veteran|gender|ethnic/i;
 const stop = (stage, message) => ({ stop: { status: "needs_user", stage, message } });
 const SECURITY = stop("security-check", "A CAPTCHA or security check appeared. Complete it on the employer's site; Job Compass will not attempt to bypass it.");
 
@@ -55,21 +58,29 @@ async function verify(page, ctx, since) {
 
 async function create(page, ctx, host) {
   if (!ctx.key || !ctx.domain) return stop("account-not-configured", "Account creation is on, but the worker has no CREDENTIAL_KEY or INBOX_DOMAIN yet.");
-  // Opting into account automation is not consent to an employer's agreement.
-  // Hand off before creating an alias or saving a password.
+  // Creating accounts is one opt-in; accepting the employer's account terms is a separate one (acceptAccountTerms).
+  // Only a plain "terms / privacy notice" box on this sign-up form can be ticked for the user. Anything else
+  // legal (certifications, authorizations, declarations, marketing or text-message consent) always hands off.
   const boxes = page.locator('input[type="checkbox"]:visible');
+  const toTick = [];
   for (let i = 0; i < await boxes.count(); i++) {
     const box = boxes.nth(i);
-    const label = await box.evaluate((el) => [...(el.labels || [])].map((l) => l.innerText || l.textContent || "").join(" ") + " " + (el.getAttribute("aria-label") || ""));
-    if (/terms|privacy|agree|consent|certif(y|ication)|authorize|declaration/i.test(label)) {
-      return stop("account-terms", "Review the employer's terms and create the account yourself. Job Compass will not accept legal agreements for you.");
+    const label = (await box.evaluate((el) => [...(el.labels || [])].map((l) => l.innerText || l.textContent || "").join(" ") + " " + (el.getAttribute("aria-label") || ""))).replace(/\s+/g, " ").trim();
+    if (!LEGAL.test(label) && !NOT_TERMS.test(label)) continue;  // not a legal/consent box (e.g. "show password")
+    if (!ACCOUNT_TERMS.test(label) || NOT_TERMS.test(label)) {
+      return stop("account-legal", "This sign-up asks for a legal confirmation beyond the account terms. Create the account yourself; Job Compass won't make that choice for you.");
     }
+    toTick.push({ box, label });
+  }
+  if (toTick.length && !ctx.settings.acceptAccountTerms) {
+    return stop("account-terms", "This sign-up requires accepting the employer's terms. Turn on \u201cAccept the employer's account terms for me\u201d in your apply settings, or create the account yourself.");
   }
   const email = await ensureAlias(ctx.rest, ctx.run.user_id, ctx.domain);
   const password = generatePassword();
   await page.locator(EMAIL).first().fill(email);
   const pws = passwordFields(page);
   for (let i = 0; i < await pws.count(); i++) await pws.nth(i).fill(password);
+  for (const t of toTick) { await t.box.check(); ctx.acceptedTerms.push(t.label.slice(0, 160)); }
   // Save the credential before submitting so a created account is never left without its password.
   const row = { user_id: ctx.run.user_id, host, email, password_enc: encryptSecret(password, ctx.key) };
   await ctx.rest("employer_accounts?on_conflict=user_id,host", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) });
