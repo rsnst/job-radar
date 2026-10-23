@@ -1,6 +1,6 @@
 import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
 import { startAdminRuns, stopAdminRuns } from "./admin-runs.js";
-import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved } from "./account.js";
+import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved, apiFetch } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -338,7 +338,7 @@ function showTab(tab) {
 }
 
 // ---------- job details panel
-let sheetJob = null, sheetReturn = null, detailToken = 0;
+let sheetJob = null, sheetReturn = null, detailToken = 0, sheetDescHtml = "";
 const detailCache = new Map(); // job id -> description HTML ("" when the posting has none)
 
 // Inflate a zlib-compressed BLOB from job_details into HTML text.
@@ -397,6 +397,7 @@ async function renderDescription(j) {
     let html = await descriptionFor(j.id);
     if (!html && j.url) html = await liveDescription(j.url).catch(() => "");
     if (token !== detailToken) return;
+    sheetDescHtml = html;
     box.innerHTML = html
       ? `<h3>About the role</h3><div class="jd-body">${cleanHtml(html)}</div>`
       : '<p class="note">The description isn’t available here yet. Use Apply to read the full posting on the employer’s site.</p>';
@@ -406,10 +407,89 @@ async function renderDescription(j) {
 }
 
 function fmtDay(d) { return new Date(d * 86400000).toISOString().slice(0, 10); }
+
+// ---------- AI fit check and the resume dialog
+const fitBox = () => $("#sheet-fit");
+const fitNote = (t) => `<p class="note">${esc(t)}</p>`;
+
+function renderFit(j) {
+  const box = fitBox();
+  box.innerHTML = "";
+  box.hidden = !account.enabled;
+  if (!account.enabled) return;
+  if (!account.user) {
+    box.innerHTML = `<h3>How well do you fit?</h3><p><button type="button" class="link" id="fit-signin">Sign in</button> to check this job against your resume.</p>`;
+    return;
+  }
+  box.innerHTML = `<h3>How well do you fit?</h3>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="fit-check">Check my fit</button>
+      <button type="button" class="btn" id="fit-edit">My resume</button>
+    </div>
+    <div id="fit-result" aria-live="polite"></div>`;
+}
+
+function renderFitResult(r) {
+  const li = (xs) => xs.length ? `<ul>${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  return `<p class="score">${esc(String(r.score))}/100</p>
+    <p>${esc(r.summary || "")}</p>
+    ${r.matched.length ? `<h3>You match</h3>${li(r.matched)}` : ""}
+    ${r.missing.length ? `<h3>Not on your resume</h3>${li(r.missing)}` : ""}
+    ${r.evidence.length ? `<h3>From the posting</h3>${r.evidence.map((q) => `<blockquote>“${esc(q)}”</blockquote>`).join("")}` : ""}
+    <p class="note">${r.cached ? "Saved from an earlier check. " : ""}AI can be wrong. Check the posting before you decide.</p>`;
+}
+
+async function runFitCheck() {
+  const job = sheetJob;
+  if (!job) return;
+  const out = $("#fit-result");
+  const btn = $("#fit-check");
+  btn.disabled = true; btn.textContent = "Checking…";
+  out.innerHTML = fitNote("Comparing your resume with this job…");
+  try {
+    let html = sheetDescHtml;
+    if (!html) html = await descriptionFor(job.id);
+    if (!html && job.url) html = await liveDescription(job.url).catch(() => "");
+    const { ok, status, data } = await apiFetch("/api/fit", { method: "POST", body: { url: job.url, title: job.title, description: html || "" } });
+    if (job !== sheetJob) return;
+    if (status === 409 && data.needsProfile) { out.innerHTML = fitNote("Add your resume first."); showProfile(); return; }
+    out.innerHTML = ok ? renderFitResult(data) : fitNote(data.error || "The check didn't work. Try again.");
+  } catch {
+    if (job === sheetJob) out.innerHTML = fitNote("The check didn't work. Try again.");
+  } finally {
+    if (job === sheetJob) { btn.disabled = false; btn.textContent = "Check my fit"; }
+  }
+}
+
+function setProfileMsg(t) { $("#profile-msg").textContent = t; }
+function updateProfileCount() { $("#profile-count").textContent = $("#profile-text").value.length.toLocaleString(); }
+
+async function showProfile() {
+  setProfileMsg("Loading…");
+  $("#profile-dialog").showModal();
+  const { ok, data } = await apiFetch("/api/profile");
+  if (!ok) { setProfileMsg(data.error || "Couldn't load your resume."); return; }
+  $("#profile-text").value = data.text || "";
+  updateProfileCount();
+  setProfileMsg(data.text ? "" : "No resume yet. Paste it above and save.");
+  $("#profile-text").focus();
+}
+
+async function saveProfile(text) {
+  setProfileMsg("Saving…");
+  const { ok, data } = await apiFetch("/api/profile", { method: "PUT", body: { text } });
+  if (!ok) { setProfileMsg(data.error || "Couldn't save your resume."); return false; }
+  $("#profile-text").value = data.text || "";
+  updateProfileCount();
+  setProfileMsg(data.text ? "Saved." : "Deleted.");
+  return true;
+}
+
 function openSheet(j) {
   if (!j) return;
   sheetJob = j;
   sheetReturn = document.activeElement;
+  sheetDescHtml = "";
   $("#sheet-title").textContent = j.title;
   $("#sheet-body").innerHTML = [
     ["Company", displayName(j.company)],
@@ -424,6 +504,7 @@ function openSheet(j) {
   $("#sheet").hidden = false;
   updateSheetSave();
   renderDescription(j);
+  renderFit(j);
   $("#sheet-close").focus();
 }
 function closeSheet() {
@@ -471,6 +552,16 @@ function wire() {
   };
   $("#auth").addEventListener("click", () => (account.user ? signOut() : openSignIn()));
   $("#signin-close").addEventListener("click", () => $("#signin-dialog").close());
+  $("#sheet-fit").addEventListener("click", (e) => {
+    const id = e.target.id;
+    if (id === "fit-signin") signIn();
+    else if (id === "fit-check") runFitCheck();
+    else if (id === "fit-edit") showProfile();
+  });
+  $("#profile-text").addEventListener("input", updateProfileCount);
+  $("#profile-save").addEventListener("click", () => saveProfile($("#profile-text").value.trim()));
+  $("#profile-delete").addEventListener("click", () => { if (confirm("Delete your resume? This can't be undone.")) saveProfile(""); });
+  $("#profile-close").addEventListener("click", () => $("#profile-dialog").close());
   const authMsg = (t) => { $("#signin-msg").textContent = t; };
   const credentials = () => {
     const email = $("#signin-email").value.trim();
