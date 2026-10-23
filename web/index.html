@@ -31,7 +31,7 @@
     <button role="tab" data-tab="coverage" aria-selected="false">Coverage</button>
     <button role="tab" data-tab="admin" aria-selected="false" id="admin-tab" hidden>Admin</button>
   </nav>
-  <button type="button" id="resume-open" class="link auth" hidden>My resume</button>
+  <button type="button" id="resume-open" class="link auth" hidden>My profile</button>
   <button type="button" id="auth" class="link auth" hidden>Sign in</button>
 </header>
 
@@ -115,24 +115,81 @@
   </form>
 </section>
 
-<dialog id="profile-dialog" class="signin resume-dialog">
-  <form method="dialog">
-    <h2>Your resume</h2>
-    <p class="note">Only you can see it. Job Compass uses it to check how well you fit each job and to answer questions in the assistant.</p>
-    <label id="resume-drop" class="resume-drop" for="profile-file">
-      <strong>Drop a file here, or choose one</strong>
-      <span>PDF, Word (.docx), or text. Up to 5 MB.</span>
-      <input id="profile-file" type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown">
-    </label>
-    <p class="note" id="profile-or">Or paste the text below.</p>
-    <label class="field"><span>Resume text</span><textarea id="profile-text" rows="12" maxlength="20000" placeholder="Paste your resume here"></textarea></label>
-    <p class="note"><span id="profile-count">0</span> / 20,000 characters</p>
-    <div class="sheet-actions">
-      <button type="button" id="profile-save" class="btn primary">Save resume</button>
-      <button type="button" id="profile-delete" class="btn">Delete resume</button>
+<dialog id="profile-dialog" class="signin profile-dialog">
+  <form method="dialog" id="profile-form">
+    <div class="pf-top"><h2>My profile</h2><button type="button" id="profile-close" class="link">Close</button></div>
+    <p class="note">Only you can see this. It fills in applications and is used to check how well you fit each job.</p>
+
+    <fieldset class="pf-section"><legend>Contact</legend>
+      <div class="pf-grid">
+        <label class="pf-field "><span>Full name</span><input type="text" name="contact.fullName" placeholder="Jane Smith" autocomplete="off"></label>
+        <label class="pf-field "><span>Email</span><input type="email" name="contact.email" placeholder="you@example.com" autocomplete="off"></label>
+        <label class="pf-field "><span>Phone</span><input type="tel" name="contact.phone" placeholder="(555) 555-0100" autocomplete="off"></label>
+        <label class="pf-field "><span>City</span><input type="text" name="contact.city" placeholder="San Antonio" autocomplete="off"></label>
+        <label class="pf-field "><span>State</span><input type="text" name="contact.state" placeholder="TX" autocomplete="off"></label>
+        <label class="pf-field "><span>ZIP code</span><input type="text" name="contact.zip" placeholder="78201" autocomplete="off"></label>
+        <label class="pf-field "><span>Country</span><input type="text" name="contact.country" placeholder="United States" autocomplete="off"></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Links</legend>
+      <div class="pf-grid">
+        <label class="pf-field wide"><span>LinkedIn</span><input type="url" name="links.linkedin" placeholder="https://linkedin.com/in/…" autocomplete="off"></label>
+        <label class="pf-field wide"><span>GitHub</span><input type="url" name="links.github" placeholder="https://github.com/…" autocomplete="off"></label>
+        <label class="pf-field wide"><span>Portfolio or website</span><input type="url" name="links.portfolio" placeholder="https://" autocomplete="off"></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Work authorization and preferences</legend>
+      <div class="pf-grid">
+        <label class="pf-field"><span>Authorized to work in the US?</span><select name="work.authorizedUS"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label class="pf-field"><span>Need visa sponsorship now or later?</span><select name="work.needsSponsorship"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label class="pf-field"><span>Willing to relocate?</span><select name="work.willingToRelocate"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label class="pf-field"><span>Work type</span><select name="work.workType"><option value="">Choose</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">On site</option><option value="any">Any</option></select></label>
+        <label class="pf-field "><span>Notice period</span><input type="text" name="work.noticePeriod" placeholder="2 weeks" autocomplete="off"></label>
+        <label class="pf-field "><span>Earliest start date</span><input type="text" name="work.startDate" placeholder="Immediately" autocomplete="off"></label>
+        <label class="pf-field "><span>Desired salary (min, USD)</span><input type="text" name="work.salaryMin" placeholder="90000" autocomplete="off"></label>
+        <label class="pf-field "><span>Desired salary (max, USD)</span><input type="text" name="work.salaryMax" placeholder="130000" autocomplete="off"></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Experience</legend>
+      <div id="pf-exp" class="pf-list"></div>
+      <button type="button" class="btn pf-add" data-add="exp">Add a job</button>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Education</legend>
+      <div id="pf-edu" class="pf-list"></div>
+      <button type="button" class="btn pf-add" data-add="edu">Add education</button>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Skills</legend>
+      <label class="pf-field wide"><span>Separate with commas</span><textarea name="skills" rows="2" placeholder=".NET, C#, SQL Server, Azure, React"></textarea></label>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Summary</legend>
+      <label class="pf-field wide"><span>A few lines about you and what you're looking for</span><textarea name="summary" rows="3"></textarea></label>
+    </fieldset>
+
+    <fieldset class="pf-section"><legend>Resume</legend>
+      <label id="resume-drop" class="resume-drop" for="profile-file">
+        <strong>Drop a file here, or choose one</strong>
+        <span>PDF, Word (.docx), or text. Up to 5 MB.</span>
+        <input id="profile-file" type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown">
+      </label>
+      <p class="note" id="profile-or">Or paste the text below.</p>
+      <label class="field"><span>Resume text</span><textarea id="profile-text" rows="8" maxlength="20000" placeholder="Paste your resume here"></textarea></label>
+      <p class="note"><span id="profile-count">0</span> / 20,000 characters</p>
+      <div class="sheet-actions">
+        <button type="button" id="profile-save" class="btn">Save resume</button>
+        <button type="button" id="profile-delete" class="btn">Delete resume</button>
+      </div>
+    </fieldset>
+
+    <div class="sheet-actions pf-foot">
+      <button type="button" id="pf-save" class="btn primary">Save profile</button>
     </div>
     <p id="profile-msg" class="note" role="status"></p>
-    <div class="sheet-top"><button type="button" id="profile-close" class="link">Close</button></div>
   </form>
 </dialog>
 

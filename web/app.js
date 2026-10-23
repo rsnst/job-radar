@@ -551,15 +551,85 @@ async function runFitCheck() {
 function setProfileMsg(t) { $("#profile-msg").textContent = t; }
 function updateProfileCount() { $("#profile-count").textContent = $("#profile-text").value.length.toLocaleString(); }
 
+// ---------- full profile: contact, links, work authorization, experience, education, skills, summary
+const EXP_KEYS = ["company", "title", "start", "end", "current", "summary"];
+const EDU_KEYS = ["school", "degree", "field", "year"];
+
+function profileRow(kind, item = {}) {
+  const row = document.createElement("div");
+  row.className = "pf-row";
+  const v = (k) => esc(item[k] || "");
+  const body = kind === "exp"
+    ? `<label class="pf-field"><span>Company</span><input data-k="company" value="${v("company")}"></label>
+       <label class="pf-field"><span>Title</span><input data-k="title" value="${v("title")}"></label>
+       <label class="pf-field"><span>Start</span><input data-k="start" placeholder="2021-03" value="${v("start")}"></label>
+       <label class="pf-field"><span>End</span><input data-k="end" placeholder="2024-06" value="${v("end")}"></label>
+       <label class="pf-check wide"><input type="checkbox" data-k="current" ${item.current ? "checked" : ""}> I work here now</label>
+       <label class="pf-field wide"><span>What you did</span><textarea data-k="summary" rows="2">${v("summary")}</textarea></label>`
+    : `<label class="pf-field"><span>School</span><input data-k="school" value="${v("school")}"></label>
+       <label class="pf-field"><span>Degree</span><input data-k="degree" value="${v("degree")}"></label>
+       <label class="pf-field"><span>Field of study</span><input data-k="field" value="${v("field")}"></label>
+       <label class="pf-field"><span>Year</span><input data-k="year" value="${v("year")}"></label>`;
+  row.innerHTML = `<div class="pf-grid">${body}</div><button type="button" class="link pf-remove">Remove</button>`;
+  row.querySelector(".pf-remove").addEventListener("click", () => row.remove());
+  return row;
+}
+
+function readRows(container, keys) {
+  return [...container.querySelectorAll(".pf-row")].map((row) => {
+    const o = {};
+    for (const k of keys) {
+      const el = row.querySelector(`[data-k="${k}"]`);
+      o[k] = !el ? "" : el.type === "checkbox" ? el.checked : el.value.trim();
+    }
+    return o;
+  });
+}
+
+function fillProfileForm(d) {
+  for (const el of $("#profile-form").querySelectorAll("[name]")) {
+    const parts = el.name.split(".");
+    let v = d;
+    for (const p of parts) v = v?.[p];
+    if (el.name === "skills") v = (d.skills || []).join(", ");
+    el.value = v ?? "";
+  }
+  $("#pf-exp").replaceChildren(...(d.experience || []).map((e) => profileRow("exp", e)));
+  $("#pf-edu").replaceChildren(...(d.education || []).map((e) => profileRow("edu", e)));
+}
+
+function readProfileForm() {
+  const out = {};
+  for (const el of $("#profile-form").querySelectorAll("[name]")) {
+    const parts = el.name.split(".");
+    if (el.name === "skills") { out.skills = el.value.split(","); continue; }
+    let o = out;
+    for (const p of parts.slice(0, -1)) o = o[p] = o[p] || {};
+    o[parts[parts.length - 1]] = el.value.trim();
+  }
+  out.experience = readRows($("#pf-exp"), EXP_KEYS);
+  out.education = readRows($("#pf-edu"), EDU_KEYS);
+  return out;
+}
+
+async function saveProfileDetails() {
+  setProfileMsg("Saving profile…");
+  const { ok, data } = await apiFetch("/api/profile-details", { method: "PUT", body: { data: readProfileForm() } });
+  if (!ok) { setProfileMsg(data.error || "Couldn't save your profile."); return; }
+  fillProfileForm(data.data || {});
+  setProfileMsg("Profile saved.");
+}
+
 async function showProfile() {
   setProfileMsg("Loading…");
   $("#profile-dialog").showModal();
-  const { ok, data } = await apiFetch("/api/profile");
-  if (!ok) { setProfileMsg(data.error || "Couldn't load your resume."); return; }
-  $("#profile-text").value = data.text || "";
+  const [details, resume] = await Promise.all([apiFetch("/api/profile-details"), apiFetch("/api/profile")]);
+  if (details.ok) fillProfileForm(details.data.data || {});
+  if (!resume.ok) { setProfileMsg(resume.data.error || "Couldn't load your resume."); return; }
+  $("#profile-text").value = resume.data.text || "";
   updateProfileCount();
-  setProfileMsg(data.text ? "" : "No resume yet. Drop a file above or paste your text, then save.");
-  $("#profile-text").focus();
+  setProfileMsg(resume.data.text ? "" : "Fill in what you can, add your resume, then save.");
+  $("#profile-form").scrollTop = 0;
 }
 
 async function saveProfile(text) {
@@ -749,6 +819,11 @@ function wire() {
   $("#profile-close").addEventListener("click", () => $("#profile-dialog").close());
   setupResumeUpload();
   $("#resume-open").addEventListener("click", showProfile);
+  $("#pf-save").addEventListener("click", saveProfileDetails);
+  document.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
+    const kind = b.dataset.add;
+    (kind === "exp" ? $("#pf-exp") : $("#pf-edu")).appendChild(profileRow(kind));
+  }));
   const authMsg = (t) => { $("#signin-msg").textContent = t; };
   const credentials = () => {
     const email = $("#signin-email").value.trim();
