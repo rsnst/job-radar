@@ -13,6 +13,13 @@ const testLocal = (u) => process.env.NODE_ENV === "test" && process.env.WORKER_T
 const LEGAL = /terms|privacy|agree|consent|certif(y|ication)|authori[sz]e|declaration|attest|acknowledge|conditions/i;
 const ACCOUNT_TERMS = /(terms|privacy|conditions|user agreement)/i;
 const NOT_TERMS = /certif|authori[sz]|declaration|attest|declar|marketing|newsletter|promotion|text message|sms|share my|third part|background|disabilit|veteran|gender|ethnic/i;
+// What the worker does with a visible checkbox on an account sign-up form: "ignore" (not legal, e.g. show password),
+// "terms" (a plain terms/privacy box, tickable only with the separate opt-in) or "legal" (always hands off).
+export function classifyCheckbox(label) {
+  const l = String(label || "");
+  if (!LEGAL.test(l) && !NOT_TERMS.test(l)) return "ignore";
+  return ACCOUNT_TERMS.test(l) && !NOT_TERMS.test(l) ? "terms" : "legal";
+}
 const stop = (stage, message) => ({ stop: { status: "needs_user", stage, message } });
 const SECURITY = stop("security-check", "A CAPTCHA or security check appeared. Complete it on the employer's site; Job Compass will not attempt to bypass it.");
 
@@ -66,8 +73,9 @@ async function create(page, ctx, host) {
   for (let i = 0; i < await boxes.count(); i++) {
     const box = boxes.nth(i);
     const label = (await box.evaluate((el) => [...(el.labels || [])].map((l) => l.innerText || l.textContent || "").join(" ") + " " + (el.getAttribute("aria-label") || ""))).replace(/\s+/g, " ").trim();
-    if (!LEGAL.test(label) && !NOT_TERMS.test(label)) continue;  // not a legal/consent box (e.g. "show password")
-    if (!ACCOUNT_TERMS.test(label) || NOT_TERMS.test(label)) {
+    const kind = classifyCheckbox(label);
+    if (kind === "ignore") continue;  // not a legal/consent box (e.g. "show password")
+    if (kind === "legal") {
       return stop("account-legal", "This sign-up asks for a legal confirmation beyond the account terms. Create the account yourself; Job Compass won't make that choice for you.");
     }
     toTick.push({ box, label });
