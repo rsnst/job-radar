@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import { resumeToPdf } from "../../web/resume-pdf.js";
 import { fillWorkdayPage } from "./workday.js";
+import { pathToFileURL } from "node:url";
 
 const supaUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -22,6 +23,7 @@ async function rest(path, options = {}) {
 function isWorkdayUrl(value) {
   try {
     const u = new URL(value);
+    if (process.env.WORKER_TEST_ALLOW_LOCAL === "1" && ["localhost", "127.0.0.1"].includes(u.hostname)) return true;
     return u.protocol === "https:" && (u.hostname === "myworkdayjobs.com" || u.hostname.endsWith(".myworkdayjobs.com")
       || u.hostname === "myworkday.com" || u.hostname.endsWith(".myworkday.com"));
   } catch { return false; }
@@ -73,7 +75,7 @@ async function shouldCancel(run) {
   return !row || row.status === "cancelled" || row.user_decision === "cancel" || row.user_decision === "reject";
 }
 
-async function processRun(run) {
+export async function processRun(run) {
   if (!isWorkdayUrl(run.job_key)) {
     await setRun(run, { status: "failed", stage: "unsupported", message: "The first worker release supports Workday application links only." });
     return;
@@ -195,19 +197,21 @@ async function claimOne() {
   return claimed?.[0] || null;
 }
 
-console.log("Job Compass Workday worker is polling the private application queue.");
-for (;;) {
-  try {
-    const run = await claimOne();
-    if (run) {
-      try { await processRun(run); }
-      catch (error) {
-        console.error(`Run ${run.id} failed:`, error?.message || "unknown worker error");
-        await setRun(run, { status: "failed", stage: "worker-error", message: "The application worker encountered an error. Retry from Job Compass." }).catch(() => {});
-      }
-    } else await sleep(pollMs);
-  } catch (error) {
-    console.error("Queue poll failed:", error?.message || "unknown error");
-    await sleep(pollMs);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  console.log("Job Compass Workday worker is polling the private application queue.");
+  for (;;) {
+    try {
+      const run = await claimOne();
+      if (run) {
+        try { await processRun(run); }
+        catch (error) {
+          console.error(`Run ${run.id} failed:`, error?.message || "unknown worker error");
+          await setRun(run, { status: "failed", stage: "worker-error", message: "The application worker encountered an error. Retry from Job Compass." }).catch(() => {});
+        }
+      } else await sleep(pollMs);
+    } catch (error) {
+      console.error("Queue poll failed:", error?.message || "unknown error");
+      await sleep(pollMs);
+    }
   }
 }
