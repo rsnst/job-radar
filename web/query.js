@@ -49,7 +49,7 @@ export function jobsQuery(f, meta) {
   }[sort];
   const offset = sort === "newest" ? "" : ` OFFSET ${Number(f.offset) | 0}`;
   const sql =
-    `SELECT j.id, j.title, j.company, j.ats, j.loc, j.state, j.remote, j.us, j.posted, j.seen, j.url, j.board, j.pd, ` +
+    `SELECT j.id, j.title, j.company, j.ats, j.loc, j.state, j.remote, j.us, j.posted, j.seen, j.url, j.board, ` +
     `${payCol} AS pay ` +
     `FROM ${from}` + (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
     ` ORDER BY ${order} LIMIT ${PAGE}${offset}`;
@@ -84,7 +84,7 @@ export function boardsQuery(f) {
 
 export function boardJobsQuery(boardId) {
   return {
-    sql: `SELECT id, title, company, ats, loc, state, remote, us, posted, seen, url, board, pd FROM jobs WHERE board = ? ORDER BY id LIMIT 200`,
+    sql: `SELECT id, title, company, ats, loc, state, remote, us, posted, seen, url, board FROM jobs WHERE board = ? ORDER BY id LIMIT 200`,
     params: [boardId],
   };
 }

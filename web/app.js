@@ -141,7 +141,7 @@ function jobCard(j) {
     <div class="meta">
       <span class="place"${j.loc && !j.us ? ' title="The posting didn\'t say which country"' : ""}>${esc(j.loc || "Location not stated")}</span>
       <span>${esc(j.ats)}</span>
-      <span>${j.pd ? posted(j.posted) : (j.seen != null ? "First seen " + ago(j.seen) : "Date not listed")}</span>
+      <span>${posted(j.posted)}</span>
     </div>
     <div class="tags">
       ${isNew ? '<span class="badge new">New</span>' : ""}
@@ -418,7 +418,7 @@ function openSheet(j) {
     ["State", j.state || "Not listed"],
     ["Pay", j.pay || "Not listed"],
     ["Source", j.ats],
-    ["Posted", j.pd && j.posted != null ? `${fmtDay(j.posted)} (${ago(j.posted)})` : "Not listed by the employer"],
+    ["Posted", j.posted != null ? `${fmtDay(j.posted)} (${ago(j.posted)})` : "Not listed"],
   ].map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("");
   $("#sheet-apply").href = j.url;
   $("#sheet").hidden = false;
