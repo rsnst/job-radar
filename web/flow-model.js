@@ -82,7 +82,7 @@ export const DEMO_JOB = {
   title: "Senior Analyst (synthetic demo role)",
   company: "Demo Company (synthetic)",
   url: "demo://synthetic-job/senior-analyst",
-  ats: "Demo mock ATS",
+  ats: "Workday-style mock (synthetic)",
   loc: "Demo City, ST",
   state: "ST",
   remote: false,
@@ -150,10 +150,13 @@ export const STEP_LABEL = {
   submitted_by_user: "You recorded: application submitted on the employer's site (done by you)",
 };
 
-// What the app can do on each platform today. Nothing here is automated yet; see docs/ATS_SUPPORT.md.
+// What the app can do on each platform today; see docs/ATS_SUPPORT.md.
 export function supportText(ats) {
   const name = ats ? String(ats) : "This employer's site";
-  return `${name}: the app doesn't fill or submit this form. You complete the account and application steps yourself. Pre-fill isn't built for this platform yet.`;
+  if (/workday/i.test(name)) {
+    return "Workday: Job Compass prepares a tailored resume and answer packet, then can queue supported application steps in its browser worker. Account sign-in, emailed verification, CAPTCHA, unknown questions, and required legal choices may still need you.";
+  }
+  return `${name}: the app can prepare tailored materials, but the first browser-worker release supports Workday only.`;
 }
 
 // Which posting text a draft is checked against. The employer's text wins. Pasted text is used only when

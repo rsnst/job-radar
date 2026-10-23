@@ -72,6 +72,22 @@ export async function saveDoc(job, kind, body, flags, source) {
   return apiFetch("/api/applications", { method: "POST", body: { job_key: job.url, kind, body, flags, source } });
 }
 
+// Real applications are queued for the app-owned browser worker. Demo applications
+// stay inside the mock flow and never touch the queue or an employer site.
+export async function startApplicationRun(job, autoSubmit = false) {
+  if (isDemoJob(job)) return { ok: false, status: 400, data: { error: "The synthetic demo never starts a real application." } };
+  return apiFetch("/api/application-runs", { method: "POST", body: { job_key: job.url, job, auto_submit: autoSubmit === true } });
+}
+export async function getApplicationRun(id) {
+  return apiFetch(`/api/application-runs?id=${encodeURIComponent(id)}`);
+}
+export async function getApplicationRuns(job) {
+  return apiFetch(`/api/application-runs?job=${encodeURIComponent(job.url)}`);
+}
+export async function decideApplicationRun(id, decision) {
+  return apiFetch("/api/application-runs", { method: "PATCH", body: { id, decision } });
+}
+
 export async function draftFor(job, text) {
   if (isDemoJob(job)) {
     return { ok: true, status: 200, data: buildDemoDraft(demoState.profile, job) };

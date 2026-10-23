@@ -142,6 +142,8 @@ Free-tier notes: results are cached per user and job, so a repeat check costs no
 
 What it does: drafts a tailored resume and cover letter from the signed-in user's profile and resume only. Anything the posting asks for that the profile doesn't show is listed as missing, not claimed. Each saved draft is a numbered version with a line-by-line diff. The apply review lists the exact answers, attachments and destination, and records a receipt only after the user confirms they submitted the form on the employer's site. The app never submits applications itself.
 
+For Workday, the review also downloads a tailored PDF and a copyable answer packet. The Apply flow can enqueue a Workday run for the app-owned Playwright worker in `worker/`. The worker can fill clear profile matches, upload the tailored PDF, and submit only when the user has opted into hands-free submission or approved the review. It stops for account sign-in/creation, emailed verification, CAPTCHA/security checks, required attestations, and unknown answers. Configure and run the worker using `worker/README.md`.
+
 
 ## Preparation queue and auto-apply criteria
 

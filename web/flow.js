@@ -1,9 +1,9 @@
-// The in-app application flow: materials, answers, account setup, review, then an explicit open of the employer page.
-// Nothing here submits an application. The applicant opens the employer's page, submits it there, and records it here.
+// The in-app application flow: prepare materials, verify answers, then queue a supported ATS run.
 // Demo jobs (demo:// addresses) run against a mock application page inside this app with synthetic data.
 import { account } from "./account.js";
 import { DEMO_JOB, FIELDS, applyAnswers, draftSource, getPath, isDemoJob, missingRequired, reviewBlockers, STEP_LABEL, supportText } from "./flow-model.js";
-import { getApplication, saveStatus, saveDoc, draftFor, loadProfile, saveProfile, postingHtml, resetDemo } from "./store.js";
+import { resumeToPdf } from "./resume-pdf.js";
+import { getApplication, saveStatus, saveDoc, draftFor, loadProfile, saveProfile, postingHtml, resetDemo, startApplicationRun, getApplicationRun, getApplicationRuns, decideApplicationRun } from "./store.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -50,15 +50,16 @@ export async function openFlow(job) {
   if (demo) resetDemo();
   if (!demo && !account.user) return openGate(job);
   st = { job, demo, step: "materials", profile: null, app: null, posting: "", pasted: "", draft: null, kind: "resume",
-    edited: { resume: "", cover: "" }, mock: false, approved: false, opened: false, receipt: null, error: "", retry: null, loadFailed: false };
+    edited: { resume: "", cover: "" }, mock: false, approved: false, opened: false, receipt: null, run: null, error: "", retry: null, loadFailed: false };
   const dlg = $("#flow-dialog");
   if (!dlg.open) dlg.showModal();
   paint("<p class=\"note\" role=\"status\">Loading your application…</p>");
   // Each request is allowed to fail on its own. A failed one shows a message and a retry, never a half-loaded flow.
-  const [p, a, text] = await Promise.all([
+  const [p, a, text, runs] = await Promise.all([
     settle(() => loadProfile(demo), "Couldn't load your profile."),
     settle(() => getApplication(job), "Couldn't load this application."),
     settle(() => postingHtml(job), null),
+    demo ? Promise.resolve({ ok: true, value: { data: { runs: [] } } }) : settle(() => getApplicationRuns(job), null),
   ]);
   if (!st || st.job !== job) return;
   st.posting = plain(text.value || "");
@@ -70,6 +71,7 @@ export async function openFlow(job) {
   }
   st.profile = p.value.profile || {};
   st.app = a.value.ok ? a.value.data : { application: null, docs: [] };
+  st.run = runs.ok ? runs.value?.data?.runs?.[0] || null : null;
   if (!a.value.ok) {
     st.loadFailed = true;
     st.error = a.value.data?.error || "Couldn't load this application.";
@@ -256,22 +258,19 @@ function answersStep() {
 function accountStep() {
   const hist = st.app.application?.history || [];
   const done = hist.filter((h) => h.step).map((h) => `<li>${esc(fmtDate(h.at))} · ${esc(STEP_LABEL[h.step] || h.step)}</li>`).join("");
-  return `<p class="note">${esc(supportText(st.job.ats))}</p>
-    <div class="warn-box"><strong>Who does what</strong>
-      <ul>
-        <li><strong>You:</strong> create any account and choose its password, read the verification email, enter any code, and solve any CAPTCHA.</li>
-        <li><strong>The app:</strong> none of those. It doesn't create accounts, read your email, or verify anything.</li>
-        <li><strong>Recording:</strong> the buttons below only save your own note of what you did. They don't check it.</li>
-      </ul></div>
-    <h3>Record what you did</h3>
-    <div class="sheet-actions">
-      <button type="button" class="btn" data-act="step" data-step="account_created_by_user">Record: I created my account</button>
-      <button type="button" class="btn" data-act="step" data-step="verification_waiting">Record: waiting for verification email</button>
-      <button type="button" class="btn" data-act="step" data-step="verification_done">Record: I verified my email</button>
-    </div>
-    <h3>Your recorded status</h3>
-    ${done ? `<ul class="hist">${done}</ul>` : `<p class="note">You haven't recorded any account steps yet.</p>`}
-    <p id="flow-msg" class="note" role="status"></p>
+  const workday = /workday/i.test(st.job.ats || "");
+  const platformGuide = workday ? `<section class="workday-guide" aria-label="Workday application steps">
+      <h3>Workday application steps</h3>
+      <ol><li><strong>Create or sign in:</strong> use the employer's Workday account page. Choose and enter your password there.</li>
+        <li><strong>My Information:</strong> enter your contact and location details from the answer packet.</li>
+        <li><strong>My Experience:</strong> upload the tailored resume, then check the work history and education Workday parsed.</li>
+        <li><strong>Application Questions:</strong> use the work authorization and sponsorship answers shown in Review.</li>
+        <li><strong>Voluntary Disclosures:</strong> answer those yourself; this profile does not guess protected or optional disclosures.</li>
+        <li><strong>Review:</strong> check every field and attachment before submitting on Workday.</li></ol>
+      <p class="note">Start the worker from Review. It fills supported fields and stops with a status when it reaches sign-in, verification, security checks, or answers it cannot verify. Account creation and email verification are not connected yet.</p>
+    </section>` : "";
+  return `<p class="note">${esc(supportText(st.job.ats))}</p>${platformGuide}
+    ${st.run ? `<section class="workday-guide"><h3>Current run</h3><p><strong>${esc(st.run.status.replaceAll("_", " "))}</strong> · ${esc(st.run.stage)}</p><p>${esc(st.run.message)}</p></section>` : `<p class="note">No application run is active. Continue to Review to launch the Job Compass worker.</p>`}
     ${nav({ next: "review" })}`;
 }
 
@@ -283,6 +282,7 @@ function reviewStep() {
   const cover = docs.find((x) => x.kind === "cover");
   const blockers = reviewBlockers({ profile: p, resumeSaved: !!resume });
   const blocked = blockers.length > 0;
+  const supportedWorkday = /^https:\/\/(?:[a-z0-9-]+\.)*(?:myworkdayjobs|myworkday)\.com\//i.test(st.job.url || "");
   const destination = st.demo ? "Demo mock application (no real destination)" : st.job.url;
   const answers = FIELDS.map((f) => {
     const v = getPath(p, f.path);
@@ -293,12 +293,32 @@ function reviewStep() {
     ? `<div class="receipt-box" role="status"><strong>${st.demo ? "Demo receipt" : "Receipt recorded"}</strong>
         <p class="note">You recorded this submission ${esc(fmtDate(st.receipt.at))} · resume v${st.receipt.resume_version ?? "none"} · cover letter ${st.receipt.cover_version ? "v" + st.receipt.cover_version : "not used"}${st.demo ? " · demo only, nothing was sent" : ""}</p></div>` : "";
   const blockerBox = blocked
-    ? `<div class="warn-box" role="alert"><strong>Before you can open the employer's form:</strong><ul>${blockers.map((b) =>
+    ? `<div class="warn-box" role="alert"><strong>Before you can start this application:</strong><ul>${blockers.map((b) =>
         `<li>${esc(b.text)} <button type="button" class="link" data-act="go" data-step="${b.step}">${b.step === "materials" ? "Go to Materials" : "Go to answers"}</button></li>`).join("")}</ul></div>`
     : "";
+  const workdayGuide = /workday/i.test(st.job.ats || "") ? `<section class="workday-guide" aria-label="Workday checklist">
+      <h3>Workday checklist</h3>
+      <p>Use the packet below as you move through Workday's application sections. Missing profile answers stay marked; the app won't fill them with guesses.</p>
+      <ol><li>My Information: contact details and location</li><li>My Experience: upload the tailored resume and verify parsed work history and education</li>
+        <li>Application Questions: confirm work authorization and sponsorship answers</li><li>Voluntary Disclosures: choose your own answers</li><li>Review: check the complete application before submitting</li></ol>
+    </section>` : "";
+  const runFields = Array.isArray(st.run?.result?.filled_fields) ? st.run.result.filled_fields : [];
+  const runMissing = Array.isArray(st.run?.result?.missing_fields) ? st.run.result.missing_fields : [];
+  const runPanel = st.run ? `<section class="workday-guide" aria-live="polite">
+      <h3>Job Compass application run</h3>
+      <p><strong>${esc(String(st.run.status || "queued").replaceAll("_", " "))}</strong> · ${esc(st.run.stage || "queued")}</p>
+      <p class="note">${esc(st.run.message || "The application worker is processing this job.")}</p>
+      ${runFields.length ? `<details><summary>Fields filled (${runFields.length})</summary><ul>${runFields.map((f) => `<li><strong>${esc(f.label || "Field")}:</strong> ${esc(f.value || "")}</li>`).join("")}</ul></details>` : ""}
+      ${runMissing.length ? `<p class="needs"><strong>Needs your input:</strong> ${esc(runMissing.join(", "))}</p>` : ""}
+      ${st.run.status === "submitted" ? `<p class="receipt">Submitted ${esc(fmtDate(st.run.result?.submitted_at))} · resume v${esc(st.run.result?.resume_version || "—")}</p>` : ""}
+      <div class="sheet-actions"><button type="button" class="btn" data-act="refresh-run">Refresh progress</button>
+      ${st.run.status === "awaiting_review" ? `<button type="button" class="btn primary" data-act="approve-run">Approve and submit</button><button type="button" class="btn" data-act="reject-run">Reject run</button>` : ""}
+      ${["queued", "running", "needs_user", "awaiting_review"].includes(st.run.status) ? `<button type="button" class="btn" data-act="cancel-run">Cancel run</button>` : ""}</div>
+    </section>` : "";
   return `${receipt}
     <dl class="facts"><div><dt>Destination</dt><dd>${esc(destination)}</dd></div><div><dt>Role</dt><dd>${esc(st.job.title)} · ${esc(st.job.company)}</dd></div></dl>
     ${blockerBox}
+    ${workdayGuide}
     <h3>What the app drafted</h3>
     <ul class="attach">
       <li>${resume
@@ -308,26 +328,24 @@ function reviewStep() {
         ? `v${cover.version}, drafted by the app${cover.source === "edited" ? " and edited by you" : ""}.`
         : "not saved. Skip it unless the form asks for one."}</li>
     </ul>
+    ${resume ? `<div class="sheet-actions"><button type="button" class="btn" data-act="download-resume">Download tailored resume (.pdf)</button></div>` : ""}
     <h3>Your answers</h3>
     <table class="answers"><tbody>${answers}${custom}</tbody></table>
-    <h3>What you do on the employer's site</h3>
-    <p class="note">The app does none of these. You do them yourself, on the employer's site.</p>
-    <ul class="checklist">
-      <li>Create or sign in to an account, if the site asks.</li>
-      <li>Solve any CAPTCHA or security check, and enter any code from email.</li>
-      <li>Upload the resume file, and answer any question not listed above.</li>
-      <li>Read the terms and tick consent boxes. Press the final submit button.</li>
-    </ul>
+    <h3>Application automation</h3>
+    <p class="note">Start a Job Compass run to have the application worker handle supported ATS steps. You can opt into hands-free submission in My profile; otherwise it pauses for your final approval. It stops when an answer is missing or a security check needs you.</p>
+    <ul class="checklist"><li>Job Compass currently automates Workday only; other ATSes remain preparation-only.</li><li>Account credentials and Gmail OTP retrieval are not connected yet.</li><li>CAPTCHA, required attestations, and unknown answers stop the worker for you.</li></ul>
     <label class="pf-check wide approve"><input type="checkbox" id="flow-approve" data-act="approve" ${st.approved ? "checked" : ""} ${blocked ? "disabled" : ""}>
-      I've checked the answers and attachments above, and they're accurate. I understand the app submits nothing.</label>
+      I've checked the profile and tailored resume. Job Compass may use them for this application.</label>
     <div class="sheet-actions">
-      <button type="button" class="btn primary" data-act="open" ${st.approved && !blocked ? "" : "disabled"}>${st.demo ? "Open mock application" : "Open employer application"}</button>
-      <button type="button" class="btn" data-act="copy">Copy my answers</button>
-      <button type="button" class="btn" data-act="submitted" ${st.approved && st.opened && !st.receipt ? "" : "disabled"}>${st.demo ? "Record demo submission" : "Record: I submitted it"}</button>
+      ${st.demo ? "" : supportedWorkday
+        ? `<button type="button" class="btn primary" data-act="start-run" ${st.approved && !blocked ? "" : "disabled"}>Start application in Job Compass</button>`
+        : `<button type="button" class="btn" disabled>In-app automation coming later for this ATS</button>`}
+      ${st.demo ? `<button type="button" class="btn" data-act="open">Open mock application</button>` : ""}
+      <button type="button" class="btn" data-act="copy">${/workday/i.test(st.job.ats || "") ? "Copy Workday answer packet" : "Copy my answers"}</button>
+      ${st.demo ? `<button type="button" class="btn" data-act="submitted" ${st.approved && st.opened && !st.receipt ? "" : "disabled"}>Record demo submission</button>` : ""}
     </div>
-    <p class="note">${st.opened
-      ? "Opened in a new tab. Submit the form there yourself, then come back and record it here."
-      : "Opening the form sends you to the employer's site in a new tab. Nothing is sent by this app."}</p>
+    ${runPanel}
+    <p class="note">The worker records every stage and reports what it filled. It does not invent missing answers or bypass CAPTCHA/security checks.</p>
     <p id="flow-msg" class="note" role="status"></p>
     ${nav({})}`;
 }
@@ -478,6 +496,39 @@ function openEmployer() {
   msg("Opened the employer's page. Come back here to record the submission.");
 }
 
+const ACTIVE_RUN = new Set(["queued", "running", "needs_user", "awaiting_review"]);
+async function refreshApplicationRun() {
+  if (!st?.run?.id) return;
+  const r = await getApplicationRun(st.run.id);
+  const latest = r.data?.runs?.[0];
+  if (!r.ok || !latest) return msg(r.data?.error || "Couldn't refresh application progress.");
+  st.run = latest;
+  render();
+  if (ACTIVE_RUN.has(latest.status)) {
+    msg(latest.status === "queued" ? "Queued. Waiting for the Job Compass worker service." : latest.message || "Application is running.");
+  }
+}
+async function queueApplicationRun() {
+  if (!st?.approved) return msg("Review and approve the profile and resume first.");
+  if (st.demo) return msg("The synthetic demo never starts a real application.");
+  const docs = st.app.docs || [];
+  const blockers = reviewBlockers({ profile: st.profile || {}, resumeSaved: docs.some((d) => d.kind === "resume") });
+  if (blockers.length) return msg("Fix the review items above first.");
+  const r = await startApplicationRun(st.job, st.profile?.autoApply?.autoSubmit === true);
+  if (!r.ok) return msg(r.data?.error || "Couldn't start the application run.");
+  st.run = r.data.run;
+  render();
+  msg(st.run.status === "queued" ? "Application queued. The worker will update this panel." : st.run.message || "Application run resumed.");
+}
+async function decideRun(decision) {
+  if (!st?.run?.id) return;
+  const r = await decideApplicationRun(st.run.id, decision);
+  if (!r.ok) return msg(r.data?.error || "Couldn't save that decision.");
+  st.run = r.data.run;
+  render();
+  msg(decision === "approve" ? "Approved. The worker can continue to submission." : decision === "reject" ? "Application run rejected." : "Application run cancelled.");
+}
+
 async function recordSubmission() {
   if (!st.approved || !st.opened) return;
   const question = st.demo
@@ -505,11 +556,34 @@ function answersText() {
   const resume = docs.find((x) => x.kind === "resume");
   const cover = docs.find((x) => x.kind === "cover");
   const lines = [`${st.job.title} · ${st.job.company}`, st.demo ? "(demo, synthetic)" : st.job.url, ""];
-  for (const f of FIELDS) if (filled(getPath(p, f.path))) lines.push(`${f.label}: ${getPath(p, f.path)}`);
+  for (const f of FIELDS) lines.push(`${f.label}: ${filled(getPath(p, f.path)) ? getPath(p, f.path) : "Not provided — answer on the employer's site"}`);
   for (const q of p.custom || []) lines.push("", q.question, q.answer);
+  if (p.experience?.length) {
+    lines.push("", "Work history");
+    for (const e of p.experience) lines.push(`${e.title || "Role"} · ${e.company || "Company"} · ${e.start || ""}–${e.current ? "Present" : e.end || ""}`, e.summary || "");
+  }
+  if (p.education?.length) {
+    lines.push("", "Education");
+    for (const e of p.education) lines.push(`${[e.degree, e.field].filter(Boolean).join(" ")} · ${e.school || "School"}${e.year ? ` · ${e.year}` : ""}`);
+  }
+  if (p.skills?.length) lines.push("", `Skills: ${p.skills.join(", ")}`);
   if (resume) lines.push("", `Resume: v${resume.version}`);
+  if (resume?.body) lines.push(resume.body);
   if (cover) lines.push("", "Cover letter:", cover.body);
   return lines.join("\n");
+}
+
+function downloadResume() {
+  const resume = (st?.app?.docs || []).find((d) => d.kind === "resume");
+  if (!resume?.body) return msg("Save a tailored resume first.");
+  const safe = `${st.job.company || "job"}-${st.job.title || "resume"}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+  const href = URL.createObjectURL(new Blob([resumeToPdf(resume.body)], { type: "application/pdf" }));
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = `${safe || "tailored-resume"}.pdf`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
+  msg("PDF resume downloaded. Select it in Workday's resume upload step, then verify what Workday parses.");
 }
 
 async function copyAnswers() {
@@ -538,6 +612,12 @@ export function initFlow() {
       return;
     }
     if (act === "open") return openEmployer();
+    if (act === "start-run") return guard(queueApplicationRun);
+    if (act === "refresh-run") return guard(refreshApplicationRun);
+    if (act === "approve-run") return guard(() => decideRun("approve"));
+    if (act === "reject-run") return guard(() => decideRun("reject"));
+    if (act === "cancel-run") return guard(() => decideRun("cancel"));
+    if (act === "download-resume") return downloadResume();
     if (act === "back-review") { st.mock = false; return render(); }
     if (act === "copy") return copyAnswers();
     // Actions that talk to the network: a failure becomes a message, and the applicant can try again.
