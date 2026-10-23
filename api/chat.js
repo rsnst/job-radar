@@ -4,7 +4,7 @@
 // ticks the box, their resume are sent to the model.
 import { currentUser, restHeaders } from "../lib/supa.js";
 
-const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const DAILY = Number(process.env.CHAT_DAILY_LIMIT || 30);
 const MAX_TURNS = 10;
 const MAX_MSG = 2000;

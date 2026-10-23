@@ -418,16 +418,38 @@ function chatLine(role, text) {
   $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
 }
 
+function showSuggestions() {
+  const log = $("#chat-log");
+  log.innerHTML = "";
+  if (!account.user) {
+    chatLine("assistant", "Sign in to use the assistant. It's free.");
+    return;
+  }
+  const picks = sheetJob
+    ? ["Summarize this job in three bullets", "What skills does this job need?", "Is this job likely to sponsor a visa?", "Draft two lines I can use to introduce myself"]
+    : ["How should I search for .NET roles?", "What should I put in my resume summary?", "How do I find jobs that offer sponsorship?"];
+  const wrap = document.createElement("div");
+  wrap.className = "chat-suggest";
+  for (const text of picks) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    b.addEventListener("click", () => {
+      $("#chat-input").value = text;
+      $("#chat-form").requestSubmit();
+    });
+    wrap.appendChild(b);
+  }
+  log.appendChild(wrap);
+}
+
 function openChat() {
   $("#chat").hidden = false;
   $("#chat-open").setAttribute("aria-expanded", "true");
   $("#chat-context").textContent = sheetJob
-    ? `Reading: ${sheetJob.title}. Ask about this job, or anything else.`
+    ? `Reading: ${sheetJob.title}`
     : "Ask anything about jobs or your search.";
-  if (!account.user) {
-    $("#chat-log").innerHTML = "";
-    chatLine("assistant", "Sign in to use the assistant.");
-  }
+  if (!$("#chat-log").children.length) showSuggestions();
   $("#chat-input").focus();
 }
 
@@ -444,10 +466,12 @@ async function sendChat(e) {
   if (!text) return;
   if (!account.user) { chatLine("assistant", "Sign in to use the assistant."); return; }
   input.value = "";
+  $("#chat-log .chat-suggest")?.remove();
   chatLine("user", text);
   chatHistory.push({ role: "user", content: text });
   const send = $("#chat-send");
   send.disabled = true;
+  chatLine("assistant pending", "Thinking…");
   try {
     const { ok, data } = await apiFetch("/api/chat", { method: "POST", body: {
       messages: chatHistory.slice(-10),
@@ -458,10 +482,12 @@ async function sendChat(e) {
     const reply = ok ? data.reply : (data.error || "The assistant didn't answer. Try again.");
     if (ok) chatHistory.push({ role: "assistant", content: reply });
     else chatHistory.pop();
+    $("#chat-log .pending")?.remove();
     chatLine("assistant", reply);
   } catch {
     chatHistory.pop();
-    chatLine("assistant", "The assistant didn't answer. Try again.");
+    $("#chat-log .pending")?.remove();
+    chatLine("assistant", "The assistant didn't answer. Check your connection and try again.");
   } finally {
     send.disabled = false;
     input.focus();
