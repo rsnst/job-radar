@@ -44,3 +44,8 @@ The only listener is the optional inbound-mail webhook (enabled when `INBOUND_SE
 (Apply button, sign-in vs create-account form, CAPTCHA, and how each checkbox is classified). It never types,
 signs in, creates an account or submits. `--deep` only clicks "Apply" / "Apply Manually" (navigation) to reach the
 sign-up screen and stops there. It exits with a list of any non-GET requests the page made (expected: none).
+
+## Quick start
+
+`cp .env.example .env`, fill it in, then `./start.sh`. It checks the required settings, installs dependencies, and starts the worker.
+Queued runs that you cancel are marked `cancelled` on the worker's next poll.
