@@ -332,19 +332,22 @@ def _build(in_dir, site, state_dir, today, td, boards_path, store):
     con.close()
 
     _log("splitting into chunks")
-    # split into fixed-size chunks for static hosting
+    # Split into fixed-size chunks for static hosting. The build version is part of every chunk's
+    # file name: a name only ever holds one build's bytes, so a CDN or a mid-publish deploy can never
+    # serve one build's pages beside another's ("database disk image is malformed").
+    version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    prefix = f"db.sqlite3.{version}."
     for old in site_db.glob("db.sqlite3.*"):
         old.unlink()
     size = tmp.stat().st_size
     with open(tmp, "rb") as f:
         i = 0
         while chunk := f.read(CHUNK):
-            (site_db / f"db.sqlite3.{i:03d}").write_bytes(chunk)
+            (site_db / f"{prefix}{i:03d}").write_bytes(chunk)
             i += 1
-    version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     (site_db / "config.json").write_text(json.dumps({
         "serverMode": "chunked", "requestChunkSize": PAGE, "databaseLengthBytes": size,
-        "serverChunkSize": CHUNK, "urlPrefix": "db.sqlite3.", "suffixLength": 3, "cacheBust": version}))
+        "serverChunkSize": CHUNK, "urlPrefix": prefix, "suffixLength": 3, "cacheBust": version}))
 
     # rowid cutoffs so "posted in last N days" becomes a cheap rowid range (id <= K)
     cutoffs = {}

@@ -207,11 +207,28 @@ jobs:
       - name: Copy current DB from the live site
         run: |
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-          if ! curl -fsSL "$base/meta.json" -o site/meta.json; then echo "No live site yet; run the scrape workflow first."; exit 1; fi
+          # The query string keeps a CDN that still holds the previous publish from handing back stale files.
+          if ! curl -fsSL --retry 3 "$base/meta.json?cb=$(date +%s)" -o site/meta.json; then echo "No live site yet; run the scrape workflow first."; exit 1; fi
           mkdir -p site/db
-          curl -fsSL "$base/db/config.json" -o site/db/config.json
-          n=$(python3 -c "import json,math;c=json.load(open('site/db/config.json'));print(math.ceil(c['databaseLengthBytes']/c['serverChunkSize']))")
-          for i in $(seq 0 $((n-1))); do f=$(printf "db.sqlite3.%03d" $i); curl -fsSL "$base/db/$f" -o "site/db/$f"; done
+          curl -fsSL --retry 3 "$base/db/config.json?cb=$(date +%s)" -o site/db/config.json
+          python3 - "$base" <<'PY'
+          import json, math, os, sys, urllib.request
+          base = sys.argv[1]
+          cfg = json.load(open("site/db/config.json")); meta = json.load(open("site/meta.json"))
+          if str(meta.get("version")) != str(cfg.get("cacheBust")):
+              sys.exit(f"meta.json ({meta.get('version')}) and db/config.json ({cfg.get('cacheBust')}) are from different builds; rerun once the publish settles")
+          n = math.ceil(cfg["databaseLengthBytes"] / cfg["serverChunkSize"])
+          for i in range(n):
+              name = f"{cfg['urlPrefix']}{i:03d}"
+              want = cfg["serverChunkSize"] if i < n - 1 else cfg["databaseLengthBytes"] - cfg["serverChunkSize"] * (n - 1)
+              for attempt in range(3):
+                  urllib.request.urlretrieve(f"{base}/db/{name}?cb={cfg['cacheBust']}", f"site/db/{name}")
+                  if os.path.getsize(f"site/db/{name}") == want:
+                      break
+              else:
+                  sys.exit(f"{name}: expected {want} bytes, got {os.path.getsize(f'site/db/{name}')}")
+          print(f"copied {n} chunks of build {cfg['cacheBust']}")
+          PY
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
       - id: deploy
