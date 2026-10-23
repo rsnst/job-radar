@@ -6,6 +6,4 @@ create table if not exists public.chat_usage (
   primary key (user_id, day)
 );
 alter table public.chat_usage enable row level security;
-create policy "chat_usage: own" on public.chat_usage for select using (auth.uid() = user_id);
-create policy "chat_usage: insert own" on public.chat_usage for insert with check (auth.uid() = user_id);
-create policy "chat_usage: update own" on public.chat_usage for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- Usage rows are server-managed through supabase/usage_limits.sql; no client policies.

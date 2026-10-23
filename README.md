@@ -127,7 +127,7 @@ Without the Supabase variables, the site still works as a public search. Sign-in
 Signed-in users paste their resume once (**My resume**), then **Check my fit** on any job with a description. The result shows a 0–100 score, what matches, what's missing, and quotes from the posting. Quotes that don't appear in the posting are dropped.
 
 Setup (once):
-1. In the Supabase SQL editor, run `supabase/ai.sql`. It creates `profiles`, `fit_cache` and `fit_usage`, each readable and writable only by its owner.
+1. In the Supabase SQL editor, run `supabase/ai.sql`. It creates owner-scoped resume profiles and fit results. Usage counters are restricted to the server-side quota RPC.
 2. In Vercel → Environment Variables, add `GROQ_API_KEY` (free key from Groq, no card needed). Optional: `GROQ_MODEL` (default `openai/gpt-oss-120b`) and `FIT_DAILY_LIMIT` (default 5 checks per user per day).
 3. Redeploy. Without `GROQ_API_KEY`, the button reports that AI checks aren't set up.
 
@@ -136,12 +136,14 @@ Free-tier notes: results are cached per user and job, so a repeat check costs no
 
 ## Application assistant (tailored materials and tracker)
 
-1. Run `supabase/applications.sql` once in the Supabase SQL editor. It creates the tracker, versioned resume and cover-letter tables, and the daily usage counter, all with row-level security.
-1. Run `supabase/hardening.sql` after the files above (and before deploying code that calls `use_quota`). It makes the daily limits atomic and tamper-proof and restricts who can queue application runs. Safe to re-run.
+1. Run `supabase/applications.sql` once in the Supabase SQL editor. It creates the tracker and versioned resume and cover-letter tables.
+2. Run `supabase/hardening.sql` to install the application queue policy and per-user queue limit.
+3. Apply `supabase/application_review_fields.sql` to support field-by-field Workday review and prevent approving a run without a complete preview.
+4. Run `supabase/usage_limits.sql` after the `ai.sql`, `applications.sql`, and `chat.sql` tables exist. It exposes the atomic quota RPC through the dedicated `usage_guard` Data API schema and revokes direct counter access and obsolete quota RPCs. The migration sets a manual PostgREST schema override, so add any future exposed schemas to `pgrst.db_schemas` in the same migration. AI attempts count against the daily limit, including attempts that fail at the provider.
 2. Optional: set `TAILOR_DAILY_LIMIT` in Vercel (default 10 drafts per user per day). It uses the same `GROQ_API_KEY` as the fit check.
 3. Redeploy.
 
-What it does: drafts a tailored resume and cover letter from the signed-in user's profile and resume only. Anything the posting asks for that the profile doesn't show is listed as missing, not claimed. Each saved draft is a numbered version with a line-by-line diff. The apply review lists the exact answers, attachments and destination, and records a receipt only after the user confirms they submitted the form on the employer's site. On Workday, with opt-ins in My profile, the worker can create the employer account, verify by email and submit unattended; everywhere else the user submits.
+What it does: drafts a tailored resume and cover letter from the signed-in user's profile and resume only. Anything the posting asks for that the profile doesn't show is listed as missing, not claimed. Each saved draft is a numbered version with a line-by-line diff. The apply review lists the exact answers, attachments and destination, and records a receipt only after the user confirms they submitted the form on the employer's site. On Workday, the worker can create an account only with the separate opt-in and submit unattended only with hands-free submission enabled; it stops for legal agreements, verification issues, and other fields it cannot safely complete.
 
 For Workday, the review also downloads a tailored PDF and a copyable answer packet. The Apply flow can enqueue a Workday run for the app-owned Playwright worker in `worker/`. The worker can fill clear profile matches, upload the tailored PDF, and submit only when the user has opted into hands-free submission or approved the review. It stops for account sign-in/creation, emailed verification, CAPTCHA/security checks, required attestations, and unknown answers. Configure and run the worker using `worker/README.md`.
 
@@ -150,6 +152,6 @@ For Workday, the review also downloads a tailored PDF and a copyable answer pack
 
 - In My profile, the **Auto-apply criteria** section sets which saved jobs go into the preparation queue: title keywords, excluded words, company include and exclude lists, locations, remote, and a minimum yearly pay.
 - The Applications tab shows the queue. "Prepare" drafts a tailored resume and cover letter for up to five matching jobs per click, using the daily draft limit.
-- **Nothing is submitted automatically.** Every application is reviewed and submitted by you. Account creation, email verification, and any CAPTCHA or legal step stay with you.
+- Hands-free submission is available for supported Workday flows only when enabled in profile settings. Every other flow requires user review and submission. The worker stops at CAPTCHAs, legal agreements, required attestations, and unknown answers.
 - Which platforms support what, and the Gmail status: see `docs/ATS_SUPPORT.md`. Email verification uses a Job Compass alias address, never the user's Gmail.
 - No database migration is needed for this increment. The criteria are stored in your profile data, and the step receipts use the existing history field.

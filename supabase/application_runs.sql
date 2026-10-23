@@ -32,14 +32,18 @@ create policy "application_runs: own enqueue" on public.application_runs
   for insert to authenticated with check (
     (select auth.uid()) = user_id and status = 'queued'
   );
-create policy "application_runs: own review decision" on public.application_runs
-  for update to authenticated
-  using ((select auth.uid()) = user_id and status = 'awaiting_review' and user_decision = 'pending')
-  with check ((select auth.uid()) = user_id and status = 'awaiting_review' and user_decision in ('approve','reject'));
-create policy "application_runs: own cancel" on public.application_runs
+create policy "application_runs: own decision" on public.application_runs
   for update to authenticated
   using ((select auth.uid()) = user_id and status in ('queued','running','needs_user','awaiting_review') and user_decision = 'pending')
-  with check ((select auth.uid()) = user_id and status in ('queued','running','needs_user','awaiting_review') and user_decision = 'cancel');
+  with check ((select auth.uid()) = user_id and case
+    when user_decision = 'cancel' then status in ('queued','running','needs_user','awaiting_review')
+    when user_decision = 'reject' then status = 'awaiting_review'
+    when user_decision = 'approve' then status = 'awaiting_review' and
+      case when jsonb_typeof(result->'review_fields') = 'array'
+        then jsonb_array_length(result->'review_fields') > 0 and result->>'review_overflow' is distinct from 'true'
+        else false end
+    else false
+  end);
 grant select, insert on public.application_runs to authenticated;
 grant update (user_decision) on public.application_runs to authenticated;
 grant usage, select on sequence public.application_runs_id_seq to authenticated;

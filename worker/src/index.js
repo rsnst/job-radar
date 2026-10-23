@@ -78,6 +78,56 @@ async function shouldCancel(run) {
   return !row || row.status === "cancelled" || row.user_decision === "cancel" || row.user_decision === "reject";
 }
 
+async function handsFreeStillEnabled(run) {
+  if (run.auto_submit !== true) return false;
+  const uid = encodeURIComponent(run.user_id);
+  const [row] = await rest(`profile_details?select=data&user_id=eq.${uid}&limit=1`);
+  return row?.data?.autoApply?.autoSubmit === true;
+}
+
+async function accountCreationStillEnabled(run) {
+  const uid = encodeURIComponent(run.user_id);
+  const [row] = await rest(`profile_details?select=data&user_id=eq.${uid}&limit=1`);
+  return row?.data?.autoApply?.createAccounts === true;
+}
+
+async function visibleFormFields(page) {
+  return page.evaluate(() => {
+    const visible = (el) => !!el.getClientRects().length;
+    const labelOf = (el) => String([
+      ...(el.labels ? [...el.labels].map((x) => x.innerText || x.textContent || "") : []),
+      el.getAttribute("aria-label"), el.getAttribute("aria-labelledby")?.split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" "),
+      el.getAttribute("placeholder"), el.getAttribute("name"), el.id,
+      el.closest("fieldset")?.querySelector("legend")?.textContent,
+    ].filter(Boolean).join(" · ")).replace(/\s+/g, " ").trim().slice(0, 120) || "Unlabeled field";
+    const controls = [...document.querySelectorAll("input,textarea,select")]
+      .filter((el) => visible(el) && !["hidden", "submit", "button", "reset"].includes(el.type));
+    const custom = [...document.querySelectorAll('[role="combobox"],[role="checkbox"],[role="radio"],[role="textbox"],[contenteditable="true"]')]
+      .filter((el) => visible(el) && !el.querySelector("input,textarea,select"));
+    const describe = (el, isCustom = false) => {
+      const type = String(el.type || el.tagName.toLowerCase()).slice(0, 20);
+      const value = el.type === "password" ? (el.value ? "[entered; hidden]" : "")
+        : el.type === "checkbox" || el.type === "radio" ? (el.checked ? (el.value || "Selected") : "Not selected")
+          : el.type === "file" ? (el.files?.length ? el.files[0].name : "")
+            : isCustom ? (el.getAttribute("aria-checked") || el.getAttribute("aria-selected") || el.getAttribute("aria-valuetext") || el.innerText || el.textContent || "")
+              : String(el.value || "");
+      return { label: labelOf(el).slice(0, 80), type: isCustom ? `custom:${el.getAttribute("role") || "editable"}` : type, value: String(value).replace(/\s+/g, " ").slice(0, 100), required: !!(el.required || el.getAttribute("aria-required") === "true") };
+    };
+    return { overflow: controls.length + custom.length > 40, customCount: custom.length, fields: [...controls.map((el) => describe(el)), ...custom.map((el) => describe(el, true))].slice(0, 40) };
+  });
+}
+
+function runReviewResult(filled, missing, fields, overflow, resumeVersion, acceptedTerms = []) {
+  return {
+    filled_fields: filled.slice(-10).map((x) => ({ label: String(x.label || "Field").slice(0, 80), value: String(x.value || "").slice(0, 100) })),
+    missing_fields: [...new Set(missing)].slice(0, 10).map((x) => String(x).slice(0, 120)),
+    review_fields: fields.slice(-40),
+    review_overflow: overflow || fields.length > 40,
+    resume_version: resumeVersion,
+    ...(acceptedTerms.length ? { accepted_terms: acceptedTerms } : {}),
+  };
+}
+
 export async function processRun(run) {
   if (!isWorkdayUrl(run.job_key)) {
     await setRun(run, { status: "failed", stage: "unsupported", message: "The first worker release supports Workday application links only." });
@@ -103,8 +153,11 @@ export async function processRun(run) {
       await setRun(run, { status: "needs_user", stage: "security-check", message: "Workday presented a CAPTCHA or security check. Complete it manually and start a new run." });
       return;
     }
-    const acctCtx = { run, rest, key: loadKey(), domain: process.env.INBOX_DOMAIN || "", settings: data.settings, acceptedTerms: [],
+    const acctCtx = { run, rest, key: loadKey(), domain: process.env.INBOX_DOMAIN || "", settings: data.settings,
+      cancelled: () => shouldCancel(run),
+      canCreateAccounts: () => accountCreationStillEnabled(run), acceptedTerms: [],
       verifyMs: Number(process.env.VERIFY_WAIT_MS) || 120_000, verifyPollMs: Number(process.env.VERIFY_POLL_MS) || 3000 };
+    if (await shouldCancel(run)) { await setRun(run, { status: "cancelled", stage: "cancelled", message: "Application run cancelled." }); return; }
     const acct0 = await handleAccount(page, acctCtx);
     if (acct0) { await setRun(run, acct0.stop); return; }
     const apply = page.getByRole("button", { name: /^(apply|apply now|apply for this job)$/i }).first();
@@ -114,17 +167,21 @@ export async function processRun(run) {
     await page.waitForTimeout(1200);
     let allFilled = [];
     let allMissing = [];
+    let allReviewFields = [];
+    let reviewOverflow = false;
+    let customFields = 0;
     for (let step = 0; step < 8; step++) {
       if (await shouldCancel(run)) { await setRun(run, { status: "cancelled", stage: "cancelled", message: "Application run cancelled." }); return; }
       if (await page.locator('iframe[src*="captcha"], [id*="captcha" i], [class*="captcha" i]').count()) {
-        await setRun(run, { status: "needs_user", stage: "security-check", message: "A CAPTCHA or security check appeared. Complete it manually; Job Compass will not attempt to bypass it.", result: { filled_fields: allFilled, missing_fields: allMissing } });
+        await setRun(run, { status: "needs_user", stage: "security-check", message: "A CAPTCHA or security check appeared. Complete it manually; Job Compass will not attempt to bypass it.", result: runReviewResult(allFilled, allMissing, allReviewFields, reviewOverflow, data.resumeVersion, acctCtx.acceptedTerms) });
         return;
       }
+      if (await shouldCancel(run)) { await setRun(run, { status: "cancelled", stage: "cancelled", message: "Application run cancelled." }); return; }
       const acct = await handleAccount(page, acctCtx);
-      if (acct) { await setRun(run, { ...acct.stop, result: { filled_fields: allFilled, missing_fields: allMissing } }); return; }
+      if (acct) { await setRun(run, { ...acct.stop, result: runReviewResult(allFilled, allMissing, allReviewFields, reviewOverflow, data.resumeVersion, acctCtx.acceptedTerms) }); return; }
       const result = await fillWorkdayPage(page, data.profile);
       allFilled = [...new Map([...allFilled, ...result.filled].map((x) => [x.label, x])).values()];
-      allMissing = [...new Set([...allMissing, ...result.missing])];
+      allMissing = [...new Set([...allMissing, ...result.missing.map((x) => String(x).slice(0, 180))])].slice(-40);
       const uploads = page.locator('input[type="file"]');
       for (let i = 0; i < await uploads.count(); i++) {
         const input = uploads.nth(i);
@@ -137,23 +194,47 @@ export async function processRun(run) {
           allFilled.push({ label: info.label || "Resume upload", value: "tailored-resume.pdf" });
         } else if (info.required) allMissing.push(info.label || "Required upload");
       }
+      const pageFields = await visibleFormFields(page);
+      reviewOverflow = reviewOverflow || pageFields.overflow;
+      customFields += pageFields.customCount;
+      const stepFields = pageFields.fields.map((field) => ({ ...field, step: step + 1 }));
+      const fieldMap = new Map(allReviewFields.map((field) => [`${field.step}\u0000${field.label}\u0000${field.type}`, field]));
+      for (const field of stepFields) fieldMap.set(`${field.step}\u0000${field.label}\u0000${field.type}`, field);
+      allReviewFields = [...fieldMap.values()];
       const submit = page.getByRole("button", { name: /^(submit|submit application|send application)$/i }).last();
       if (await submit.count()) {
         const blockers = [...allMissing];
-        const checkboxes = page.locator('input[type="checkbox"]:visible');
+        if (reviewOverflow || allReviewFields.length > 40) blockers.push("This application has more visible fields than Job Compass can safely preview. Review and submit it yourself on Workday.");
+        if (customFields) blockers.push("This application contains custom fields that Job Compass cannot verify. Review and submit it yourself on Workday.");
+        const checkboxes = page.locator('input[type="checkbox"]:visible,[role="checkbox"]:visible');
         if (await checkboxes.count()) blockers.push("Review required consent or declaration checkboxes on the employer form.");
-        const resultSummary = { filled_fields: allFilled, missing_fields: [...new Set(blockers)], resume_version: data.resumeVersion, ...(acctCtx.acceptedTerms.length ? { accepted_terms: acctCtx.acceptedTerms } : {}) };
+        const resultSummary = runReviewResult(allFilled, blockers, allReviewFields, reviewOverflow, data.resumeVersion, acctCtx.acceptedTerms);
         if (blockers.length) {
           await setRun(run, { status: "needs_user", stage: "missing-answers", message: "Some required answers or consent choices need your input. Nothing was submitted.", result: resultSummary });
           return;
         }
-        if (!run.auto_submit) {
-          await setRun(run, { status: "awaiting_review", stage: "review", message: "The form is filled. Review the listed fields in Job Compass before approving submission.", result: resultSummary });
+        let autoSubmit = await handsFreeStillEnabled(run);
+        let reviewed = false;
+        if (!autoSubmit) {
+          await setRun(run, { status: "awaiting_review", stage: "review", message: "The form is filled. Review every visible application field and value below before approving submission.", result: resultSummary });
           const decision = await waitForDecision(run, page);
-          if (decision !== "approve") return;
+          if (decision !== "approve") {
+            await setRun(run, { status: decision === "reject" ? "cancelled" : "cancelled", stage: decision, message: decision === "reject" ? "Application review rejected by the user." : "Application run cancelled." });
+            return;
+          }
+          reviewed = true;
+        }
+        if (autoSubmit && !(await handsFreeStillEnabled(run))) {
+          autoSubmit = false;
+          await setRun(run, { status: "awaiting_review", stage: "review", message: "Hands-free submission was turned off. Review every visible application field and value below before approving submission.", result: resultSummary });
+          const decision = await waitForDecision(run, page);
+          if (decision !== "approve") { await setRun(run, { status: "cancelled", stage: decision, message: decision === "reject" ? "Application review rejected by the user." : "Application run cancelled." }); return; }
+          reviewed = true;
         }
         const [current] = await rest(`application_runs?select=user_decision&user_id=eq.${encodeURIComponent(run.user_id)}&id=eq.${encodeURIComponent(run.id)}&limit=1`);
-        if ((!run.auto_submit && current?.user_decision !== "approve") || current?.user_decision === "cancel" || current?.user_decision === "reject") return;
+        if ((!autoSubmit && (!reviewed || current?.user_decision !== "approve")) || current?.user_decision === "cancel" || current?.user_decision === "reject") return;
+        if (autoSubmit && !(await handsFreeStillEnabled(run))) { await setRun(run, { status: "cancelled", stage: "consent-withdrawn", message: "Hands-free submission consent changed. Start a new run to continue." }); return; }
+        if (await shouldCancel(run)) { await setRun(run, { status: "cancelled", stage: "cancelled", message: "Application run cancelled." }); return; }
         await submit.click();
         await page.waitForTimeout(1500);
         const confirmation = (await page.locator("body").innerText().catch(() => "")).slice(0, 1000);
@@ -171,7 +252,7 @@ export async function processRun(run) {
       await next.click();
       await page.waitForTimeout(900);
     }
-    await setRun(run, { status: "needs_user", stage: "unsupported-form", message: "This Workday page did not match the supported flow. No application was submitted.", result: { filled_fields: allFilled, missing_fields: allMissing, resume_version: data.resumeVersion } });
+    await setRun(run, { status: "needs_user", stage: "unsupported-form", message: "This Workday page did not match the supported flow. No application was submitted.", result: runReviewResult(allFilled, allMissing, allReviewFields, reviewOverflow, data.resumeVersion, acctCtx.acceptedTerms) });
   } finally {
     await context.close().catch(() => {});
     await browser.close().catch(() => {});

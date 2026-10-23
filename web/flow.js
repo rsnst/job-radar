@@ -329,15 +329,19 @@ function reviewStep() {
     </section>` : "";
   const runFields = Array.isArray(st.run?.result?.filled_fields) ? st.run.result.filled_fields : [];
   const runMissing = Array.isArray(st.run?.result?.missing_fields) ? st.run.result.missing_fields : [];
+  const canApproveRun = Array.isArray(st.run?.result?.review_fields) && st.run.result.review_fields.length > 0 && !st.run.result.review_overflow;
   const runPanel = st.run ? `<section class="workday-guide" aria-live="polite">
       <h3>Job Compass application run</h3>
       <p><strong>${esc(String(st.run.status || "queued").replaceAll("_", " "))}</strong> · ${esc(st.run.stage || "queued")}</p>
       <p class="note">${esc(st.run.message || "The application worker is processing this job.")}</p>
       ${runFields.length ? `<details><summary>Fields filled (${runFields.length})</summary><ul>${runFields.map((f) => `<li><strong>${esc(f.label || "Field")}:</strong> ${esc(f.value || "")}</li>`).join("")}</ul></details>` : ""}
+      ${Array.isArray(st.run.result?.accepted_terms) && st.run.result.accepted_terms.length ? `<details><summary>Employer terms accepted (${st.run.result.accepted_terms.length})</summary><ul>${st.run.result.accepted_terms.map((term) => `<li>${esc(term)}</li>`).join("")}</ul></details>` : ""}
+      ${Array.isArray(st.run.result?.review_fields) && st.run.result.review_fields.length ? `<details class="run-review-fields" open><summary>Review application fields (${st.run.result.review_fields.length})</summary><p class="note">These are the visible fields the worker observed across the application steps. Check the labels and values carefully${st.run.result.review_overflow ? "; the application exceeds the preview limit and cannot be submitted by Job Compass." : "."}</p><ul>${st.run.result.review_fields.map((f) => `<li><strong>${esc(f.label || "Field")}</strong> <span class="note">Step ${esc(f.step || "—")} · ${esc(f.type || "")}${f.required ? " · required" : ""}</span><br>${esc(f.value || "(blank)")}</li>`).join("")}</ul></details>` : ""}
       ${runMissing.length ? `<p class="needs"><strong>Needs your input:</strong> ${esc(runMissing.join(", "))}</p>` : ""}
+      ${st.run.status === "awaiting_review" && !canApproveRun ? `<p class="needs">This run has no complete field review. Cancel it and start a new application run.</p>` : ""}
       ${st.run.status === "submitted" ? `<p class="receipt">Submitted ${esc(fmtDate(st.run.result?.submitted_at))} · resume v${esc(st.run.result?.resume_version || "—")}</p>` : ""}
       <div class="sheet-actions"><button type="button" class="btn" data-act="refresh-run">Refresh progress</button>
-      ${st.run.status === "awaiting_review" ? `<button type="button" class="btn primary" data-act="approve-run">Approve and submit</button><button type="button" class="btn" data-act="reject-run">Reject run</button>` : ""}
+      ${st.run.status === "awaiting_review" ? `${canApproveRun ? `<button type="button" class="btn primary" data-act="approve-run">Approve reviewed application and submit</button>` : ""}<button type="button" class="btn" data-act="reject-run">Reject run</button>` : ""}
       ${["queued", "running", "needs_user", "awaiting_review"].includes(st.run.status) ? `<button type="button" class="btn" data-act="cancel-run">Cancel run</button>` : ""}</div>
     </section>` : "";
   return `${receipt}

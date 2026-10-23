@@ -3,11 +3,11 @@
 // saves a version with /api/applications. Uses Groq's free API (GROQ_API_KEY) with TAILOR_DAILY_LIMIT
 // new drafts per user per day (default 10).
 import { currentUser, restHeaders } from "../lib/supa.js";
-import { useQuota, refundQuota } from "../lib/quota.js";
+import { useQuota } from "../lib/usage.js";
 import { SYSTEM_PROMPT, buildUserMessage, verifyAgainst, parseMaterials, profileGaps, minimalProfile } from "../lib/tailor.js";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
-const DAILY = Number(process.env.TAILOR_DAILY_LIMIT || 10);
+const DAILY = Math.max(1, Math.min(1000, Math.floor(Number(process.env.TAILOR_DAILY_LIMIT) || 10)));
 const JOB_CHARS = 8000;
 const SOURCE_CHARS = 12000;
 
@@ -72,11 +72,10 @@ export default async function handler(req, res) {
   try {
     materials = parseMaterials(await askGroq(source, job));
   } catch (e) {
-    await refundQuota(ctx, "tailor");
     if (e.status === 429) return res.status(429).json({ error: "The free AI limit is used up for today. Try again later." });
     return res.status(502).json({ error: "The drafting service didn't answer. Try again in a moment." });
   }
-  if (!materials) { await refundQuota(ctx, "tailor"); return res.status(502).json({ error: "The draft came back incomplete. Try again." }); }
+  if (!materials) return res.status(502).json({ error: "The draft came back incomplete. Try again." });
 
   const flags = verifyAgainst({ source: `${JSON.stringify(profileForModel)}\n${resumeText}`, job, output: `${materials.resume}\n${materials.cover}` });
 

@@ -3,10 +3,10 @@
 // gets FIT_DAILY_LIMIT new checks a day (default 5), so the free quota goes a long way.
 import { createHash } from "node:crypto";
 import { currentUser, restHeaders } from "../lib/supa.js";
-import { useQuota, refundQuota } from "../lib/quota.js";
+import { useQuota } from "../lib/usage.js";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
-const DAILY = Number(process.env.FIT_DAILY_LIMIT || 5);
+const DAILY = Math.max(1, Math.min(1000, Math.floor(Number(process.env.FIT_DAILY_LIMIT) || 5)));
 const JOB_CHARS = 8000;
 const RESUME_CHARS = 8000;
 
@@ -79,7 +79,6 @@ export default async function handler(req, res) {
   const [hit] = cr.ok ? await cr.json() : [];
   if (hit?.result?.profile_hash === profileHash) return res.status(200).json({ ...hit.result, cached: true });
 
-  // daily allowance, counted atomically by the database; given back if the AI call fails
   const q = await useQuota(ctx, "fit", DAILY);
   if (!q.ok) return res.status(502).json({ error: "Couldn't check your limit. Try again." });
   if (!q.allowed) return res.status(429).json({ error: `You've used today's ${DAILY} checks. Try again tomorrow.` });
@@ -88,7 +87,6 @@ export default async function handler(req, res) {
   try {
     raw = await askGroq({ title, text: jobText }, resume);
   } catch (e) {
-    await refundQuota(ctx, "fit");
     if (e.code === 429) return res.status(429).json({ error: "The free AI limit is used up for today. Try again later." });
     return res.status(502).json({ error: "The AI check didn't finish. Try again in a moment." });
   }

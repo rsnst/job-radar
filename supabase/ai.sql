@@ -1,5 +1,5 @@
 -- Job Compass: resume profiles and AI fit checks. Run once in the Supabase SQL editor.
--- Every table is readable and writable only by the user it belongs to (RLS).
+-- Profile/cache rows are owner-scoped; usage counters are server-managed.
 
 create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
@@ -31,6 +31,4 @@ create table if not exists public.fit_usage (
   primary key (user_id, day)
 );
 alter table public.fit_usage enable row level security;
-create policy "fit_usage: own" on public.fit_usage for select using (auth.uid() = user_id);
-create policy "fit_usage: insert own" on public.fit_usage for insert with check (auth.uid() = user_id);
-create policy "fit_usage: update own" on public.fit_usage for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- Usage rows are server-managed through supabase/usage_limits.sql; no client policies.

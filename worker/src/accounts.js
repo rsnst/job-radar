@@ -22,6 +22,8 @@ export function classifyCheckbox(label) {
 }
 const stop = (stage, message) => ({ stop: { status: "needs_user", stage, message } });
 const SECURITY = stop("security-check", "A CAPTCHA or security check appeared. Complete it on the employer's site; Job Compass will not attempt to bypass it.");
+const CANCELLED = { stop: { status: "cancelled", stage: "cancelled", message: "Application run cancelled." } };
+const isCancelled = async (ctx) => ctx.cancelled ? await ctx.cancelled() : false;
 
 async function click(page, name) {
   const b = page.getByRole("button", { name }).first();
@@ -31,9 +33,11 @@ async function click(page, name) {
 const passwordFields = (page) => page.locator('input[type="password"]:visible');
 const blocked = async (page) => (await page.locator(CAPTCHA).count()) > 0;
 
-async function signIn(page, acct, key) {
+async function signIn(page, acct, key, ctx) {
+  if (await isCancelled(ctx)) return CANCELLED;
   await page.locator(EMAIL).first().fill(acct.email);
   await passwordFields(page).first().fill(decryptSecret(acct.password_enc, key));
+  if (await isCancelled(ctx)) return CANCELLED;
   await click(page, /^sign in$/i);
   if (await blocked(page)) return SECURITY;
   if (await passwordFields(page).count()) return stop("account-signin", "Sign-in to the saved employer account did not work. Remove the saved account in Job Compass settings or sign in yourself.");
@@ -45,13 +49,16 @@ async function verify(page, ctx, since) {
   if (!/verif(y|ication)|check your email|enter the code|confirm your email/i.test(text)) return null;
   const until = Date.now() + ctx.verifyMs;
   while (Date.now() < until) {
+    if (await isCancelled(ctx)) return CANCELLED;
     const got = await takeVerification(ctx.rest, ctx.run.user_id, since);
     if (got?.code && await page.locator(CODE).count()) {
       await page.locator(CODE).first().fill(got.code);
+      if (await isCancelled(ctx)) return CANCELLED;
       await click(page, /^(verify|submit|continue|confirm)$/i);
       return null;
     }
     if (got?.link && (linkAllowed(got.link) || testLocal(got.link))) {
+      if (await isCancelled(ctx)) return CANCELLED;
       const tab = await page.context().newPage();
       await tab.goto(got.link, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {});
       await tab.close().catch(() => {});
@@ -64,6 +71,8 @@ async function verify(page, ctx, since) {
 }
 
 async function create(page, ctx, host) {
+  if (await isCancelled(ctx)) return CANCELLED;
+  if (ctx.canCreateAccounts && !(await ctx.canCreateAccounts())) return stop("account-opt-out", "Employer account creation was turned off. Create or verify the account yourself to continue.");
   if (!ctx.key || !ctx.domain) return stop("account-not-configured", "Account creation is on, but the worker has no CREDENTIAL_KEY or INBOX_DOMAIN yet.");
   // Creating accounts is one opt-in; accepting the employer's account terms is a separate one (acceptAccountTerms).
   // Only a plain "terms / privacy notice" box on this sign-up form can be ticked for the user. Anything else
@@ -88,17 +97,27 @@ async function create(page, ctx, host) {
   await page.locator(EMAIL).first().fill(email);
   const pws = passwordFields(page);
   for (let i = 0; i < await pws.count(); i++) await pws.nth(i).fill(password);
+  if (await isCancelled(ctx)) return CANCELLED;
+  if (ctx.canCreateAccounts && !(await ctx.canCreateAccounts())) return stop("account-opt-out", "Employer account creation was turned off. Create or verify the account yourself to continue.");
   for (const t of toTick) { await t.box.check(); ctx.acceptedTerms.push(t.label.slice(0, 160)); }
   // Save the credential before submitting so a created account is never left without its password.
   const row = { user_id: ctx.run.user_id, host, email, password_enc: encryptSecret(password, ctx.key) };
   await ctx.rest("employer_accounts?on_conflict=user_id,host", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) });
   const since = new Date(Date.now() - 2000).toISOString();
+  if (await isCancelled(ctx)) {
+    await ctx.rest(`employer_accounts?user_id=eq.${encodeURIComponent(ctx.run.user_id)}&host=eq.${encodeURIComponent(host)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }).catch(() => {});
+    return CANCELLED;
+  }
+  if (ctx.canCreateAccounts && !(await ctx.canCreateAccounts())) {
+    await ctx.rest(`employer_accounts?user_id=eq.${encodeURIComponent(ctx.run.user_id)}&host=eq.${encodeURIComponent(host)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }).catch(() => {});
+    return stop("account-opt-out", "Employer account creation was turned off. Create or verify the account yourself to continue.");
+  }
   await click(page, /^create account$/i);
   if (await blocked(page)) return SECURITY;
   const v = await verify(page, ctx, since);
   if (v) return v;
   const left = await passwordFields(page).count();
-  if (left === 1) return signIn(page, { email, password_enc: row.password_enc }, ctx.key);   // created, now at sign-in
+  if (left === 1) return signIn(page, { email, password_enc: row.password_enc }, ctx.key, ctx);   // created, now at sign-in
   if (left > 1) {
     await ctx.rest(`employer_accounts?user_id=eq.${encodeURIComponent(ctx.run.user_id)}&host=eq.${encodeURIComponent(host)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
     return stop("account-create", "Workday did not accept the new account (the password rules or form may have changed). Nothing was saved. Create the account yourself.");
@@ -108,6 +127,7 @@ async function create(page, ctx, host) {
 
 // Returns null when the page is clear to continue, or { stop: {...} } to hand the run back to the user.
 export async function handleAccount(page, ctx) {
+  if (await isCancelled(ctx)) return CANCELLED;
   if (await blocked(page)) return SECURITY;
   if (!(await passwordFields(page).count())) return null;
   const host = new URL(page.url()).hostname;
@@ -115,7 +135,7 @@ export async function handleAccount(page, ctx) {
   const [acct] = await ctx.rest(`employer_accounts?select=email,password_enc&user_id=eq.${uid}&host=eq.${encodeURIComponent(host)}&limit=1`);
   const creating = (await passwordFields(page).count()) >= 2;
   let out;
-  if (acct && !creating) out = await signIn(page, acct, ctx.key);
+  if (acct && !creating) out = await signIn(page, acct, ctx.key, ctx);
   else if (!ctx.settings.createAccounts) {
     return stop("account", "This Workday tenant needs an account. Turn on “Create employer accounts for me” in your apply settings, or sign in yourself.");
   } else {

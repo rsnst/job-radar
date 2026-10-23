@@ -1,5 +1,5 @@
 -- Job Compass hardening (audit follow-up). Safe to re-run. Run once in the Supabase SQL editor,
--- BEFORE deploying the API change that calls use_quota / refund_quota.
+-- BEFORE deploying API code that relies on secure usage limits and queue policies.
 
 -- 1) Daily limits that can't be raced or reset. Users could previously UPDATE their own counter row,
 --    and the API read-then-wrote it. Now only these functions change the counters, atomically.
@@ -39,12 +39,16 @@ grant execute on function public.use_quota(text, integer), public.refund_quota(t
 --    and at most 50 runs per user per day so one account can't flood the shared worker.
 -- Counting runs inside the policy itself would recurse (the policy reads its own table), so the
 -- count lives in a small security-definer function.
-create or replace function public.runs_last_day()
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+grant usage on schema private to authenticated;
+
+create or replace function private.runs_last_day()
 returns integer language sql stable security definer set search_path = '' as $$
   select count(*)::integer from public.application_runs where user_id = auth.uid() and created_at > now() - interval '1 day'
 $$;
-revoke all on function public.runs_last_day() from public, anon;
-grant execute on function public.runs_last_day() to authenticated;
+revoke all on function private.runs_last_day() from public, anon;
+grant execute on function private.runs_last_day() to authenticated;
 
 drop policy if exists "application_runs: own enqueue" on public.application_runs;
 create policy "application_runs: own enqueue" on public.application_runs
@@ -54,5 +58,5 @@ create policy "application_runs: own enqueue" on public.application_runs
     and (auto_submit = false or exists (
       select 1 from public.profile_details d
       where d.user_id = (select auth.uid()) and d.data -> 'autoApply' ->> 'autoSubmit' = 'true'))
-    and public.runs_last_day() < 50
+    and private.runs_last_day() < 50
   );

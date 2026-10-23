@@ -1,5 +1,5 @@
 -- Job Compass: application tracker, versioned tailored materials, and tailoring usage.
--- Run once in the Supabase SQL editor. Every table is readable and writable only by its owner (RLS).
+-- Run once in the Supabase SQL editor. User data is owner-scoped; usage is server-managed.
 
 create table if not exists public.applications (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -43,6 +43,4 @@ create table if not exists public.tailor_usage (
   primary key (user_id, day)
 );
 alter table public.tailor_usage enable row level security;
-create policy "tailor_usage: own" on public.tailor_usage for select using (auth.uid() = user_id);
-create policy "tailor_usage: insert own" on public.tailor_usage for insert with check (auth.uid() = user_id);
-create policy "tailor_usage: update own" on public.tailor_usage for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- Usage rows are server-managed through supabase/usage_limits.sql; no client policies.

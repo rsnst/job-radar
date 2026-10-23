@@ -72,6 +72,15 @@ export default async function handler(req, res) {
     const id = runId(req.body?.id);
     const decision = ["approve", "reject", "cancel"].includes(req.body?.decision) ? req.body.decision : "";
     if (!id || !decision) return res.status(400).json({ error: "Choose a valid application decision." });
+    if (decision === "approve") {
+      const review = await fetch(`${table}?select=status,user_decision,result&user_id=eq.${ctx.id}&id=eq.${encodeURIComponent(id)}&limit=1`, { headers: restHeaders(ctx) });
+      if (!review.ok) return res.status(502).json({ error: "Couldn't verify the application review." });
+      const [row] = await review.json();
+      if (!row || row.status !== "awaiting_review" || row.user_decision !== "pending") return res.status(409).json({ error: "This run is no longer waiting for your decision." });
+      if (!Array.isArray(row.result?.review_fields) || !row.result.review_fields.length || row.result.review_overflow === true) {
+        return res.status(409).json({ error: "This run has no complete field review. Cancel it and start a new application run." });
+      }
+    }
     const statusFilter = decision === "cancel" ? "status=in.(queued,running,needs_user,awaiting_review)" : "status=eq.awaiting_review";
     const r = await fetch(`${table}?id=eq.${encodeURIComponent(id)}&user_id=eq.${ctx.id}&${statusFilter}&user_decision=eq.pending`, {
       method: "PATCH", headers: restHeaders(ctx, { Prefer: "return=representation" }),
