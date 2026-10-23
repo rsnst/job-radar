@@ -287,6 +287,7 @@ function updateAuthUI() {
   b.hidden = !account.enabled;
   b.textContent = account.user ? "Sign out" : "Sign in";
   b.dataset.mode = account.user ? "out" : "in";
+  $("#resume-open").hidden = !account.user;
   $("#admin-tab").hidden = !account.isAdmin;
   if (!account.isAdmin && S.tab === "admin") showTab("jobs");
 }
@@ -747,6 +748,7 @@ function wire() {
   $("#profile-delete").addEventListener("click", () => { if (confirm("Delete your resume? This can't be undone.")) saveProfile(""); });
   $("#profile-close").addEventListener("click", () => $("#profile-dialog").close());
   setupResumeUpload();
+  $("#resume-open").addEventListener("click", showProfile);
   const authMsg = (t) => { $("#signin-msg").textContent = t; };
   const credentials = () => {
     const email = $("#signin-email").value.trim();
