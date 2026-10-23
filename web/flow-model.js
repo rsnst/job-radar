@@ -144,10 +144,10 @@ export function buildDemoDraft(profile, job) {
 
 // Steps the applicant confirms themselves. The app records them; it never performs them.
 export const STEP_LABEL = {
-  account_created_by_user: "You confirmed you created an account",
-  verification_waiting: "Waiting for the verification email (you check your inbox)",
-  verification_done: "You confirmed email verification",
-  submitted_by_user: "You confirmed you submitted the application",
+  account_created_by_user: "You recorded: account created (done by you, outside this app)",
+  verification_waiting: "You recorded: waiting for the verification email (you check your own inbox)",
+  verification_done: "You recorded: email verified (done by you, outside this app)",
+  submitted_by_user: "You recorded: application submitted on the employer's site (done by you)",
 };
 
 // What the app can do on each platform today. Nothing here is automated yet; see docs/ATS_SUPPORT.md.
@@ -164,4 +164,15 @@ export function draftSource({ posting = "", pasted = "" } = {}) {
   const q = String(pasted || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   if (q) return { text: q, source: "pasted" };
   return { text: "", source: "" };
+}
+
+// What still stops the applicant from opening the employer's form. Each blocker says where to fix it.
+// A tailored resume version is required here, so the applicant always has a reviewed resume on record.
+// The cover letter is optional and is never a blocker.
+export function reviewBlockers({ profile, resumeSaved }) {
+  const out = [];
+  const req = missingRequired(profile);
+  if (req.length) out.push({ step: "answers", text: `Answer the required questions: ${req.join(", ")}.` });
+  if (!resumeSaved) out.push({ step: "materials", text: "Save a tailored resume version first: open Materials, draft it, review it, and save it." });
+  return out;
 }
