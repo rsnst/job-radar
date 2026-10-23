@@ -49,3 +49,10 @@ sign-up screen and stops there. It exits with a list of any non-GET requests the
 
 `cp .env.example .env`, fill it in, then `./start.sh`. It checks the required settings, installs dependencies, and starts the worker.
 Queued runs that you cancel are marked `cancelled` on the worker's next poll.
+
+## Hosted deploy (Render)
+
+`render.yaml` at the repo root deploys the worker as an always-on Docker service. In Render: New > Blueprint > this repo,
+then fill in `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `INBOX_DOMAIN`. Render generates `CREDENTIAL_KEY` and
+`INBOUND_SECRET` itself. Point your mail provider at `https://<service>.onrender.com/inbound` with `INBOUND_SECRET`.
+Keep `CREDENTIAL_KEY` unchanged afterwards; changing it makes saved employer passwords unreadable.
