@@ -3,8 +3,8 @@
 
 export const PAGE = 40;
 
-// Turn free text into a safe FTS5 query: each word is a quoted prefix term.
-// ".NET" -> "net"*, "C#" -> "c#"*
+// FTS4 requires the prefix star inside the quotes (outside means exact match).
+// ".NET" -> "net*", "C#" -> "c#*"
 export function ftsQuery(text) {
   const words = (text || "")
     .toLowerCase()
@@ -12,7 +12,7 @@ export function ftsQuery(text) {
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 8);
-  return words.map((w) => `"${w.replace(/"/g, "")}"*`).join(" ");
+  return words.map((w) => `"${w.replace(/"/g, "")}*"`).join(" ");
 }
 
 // f = { q, days, board, state, ats, remote, usOnly, newSince, afterId }
@@ -74,7 +74,7 @@ export function boardsQuery(f) {
   }
   if (f.ats) { where.push("b.ats = ?"); params.push(f.ats); }
   if (f.hasJobs) where.push("b.jobs > 0");
-  const order = fts ? "b.jobs DESC" : "b.jobs DESC, b.id";
+  const order = "b.jobs DESC, b.id";
   const sql =
     `SELECT b.id, b.company, b.ats, b.url, b.evidence, b.status, b.jobs FROM ${from}` +
     (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
