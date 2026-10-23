@@ -187,7 +187,16 @@ async function recordTracker(run, resumeVersion) {
   await rest(`applications?on_conflict=user_id,job_key`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ user_id: run.user_id, job_key: run.job_key, job: row?.job || run.job, status: "submitted", notes: "", history, updated_at: now }) });
 }
 
+// A run cancelled or rejected while still queued is never claimed; mark it cancelled so the app shows the right status.
+export async function sweepCancelled() {
+  await rest("application_runs?status=eq.queued&user_decision=in.(cancel,reject)", {
+    method: "PATCH", headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ status: "cancelled", stage: "cancelled", message: "Application run cancelled.", updated_at: new Date().toISOString() }),
+  });
+}
+
 async function claimOne() {
+  await sweepCancelled().catch(() => {});
   const rows = await rest("application_runs?select=*&status=eq.queued&user_decision=eq.pending&order=created_at.asc&limit=1");
   const run = rows[0];
   if (!run) return null;
