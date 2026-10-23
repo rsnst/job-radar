@@ -1,6 +1,8 @@
 import { jobsQuery, boardsQuery, detailQuery, PAGE } from "./query.js";
 import { startAdminRuns, stopAdminRuns } from "./admin-runs.js";
-import { initApply, setDescriptionSource, setLiveDescriptionLoader, renderApplyKit, renderTracker } from "./apply.js";
+import { initApply, renderApplyKit, renderTracker } from "./apply.js";
+import { initFlow, openApplyEntry, openFlow, setSignInHandler, takePendingApply } from "./flow.js";
+import { setPostingLoader } from "./store.js";
 import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved, apiFetch } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
@@ -150,7 +152,7 @@ function jobCard(j) {
       ${contractOf(j.title) ? `<span class="badge contract">${esc(contractOf(j.title))}</span>` : ""}
     </div>
     <div class="card-foot">
-      <a class="apply" href="${esc(j.url)}" target="_blank" rel="noopener">Apply<span class="sr-only"> for ${esc(j.title)}</span></a>
+      <button type="button" class="apply" data-apply="${j.id}">Apply<span class="sr-only"> for ${esc(j.title)}</span></button>
       <button type="button" class="details" data-detail="${j.id}">Details</button>
     </div>
   </li>`;
@@ -380,6 +382,9 @@ function cleanHtml(html) {
 
 async function descriptionFor(id) {
   if (detailCache.has(id)) return detailCache.get(id);
+  // meta.with_details is set only by builds that include the job_details table. Older builds don't, and
+  // querying a missing table is what made the Details panel report "Couldn't load".
+  if (meta.with_details == null) return "";
   const rows = await query(detailQuery(id));
   const body = rows.length && rows[0].body ? await inflate(rows[0].body) : "";
   detailCache.set(id, body);
@@ -393,20 +398,32 @@ async function liveDescription(url) {
   return (await r.json()).html || "";
 }
 
+// The posting's text for this job: the database when it has it, otherwise the employer's own data.
+async function postingText(j) {
+  let html = await descriptionFor(j.id).catch(() => "");
+  if (!html && j.url) html = await liveDescription(j.url).catch(() => "");
+  return html || "";
+}
+
 async function renderDescription(j) {
   const token = ++detailToken;
   const box = $("#sheet-desc");
   box.innerHTML = '<p class="note">Loading description…</p>';
-  try {
-    let html = await descriptionFor(j.id);
-    if (!html && j.url) html = await liveDescription(j.url).catch(() => "");
-    if (token !== detailToken) return;
+  const readPosting = /^https?:\/\//.test(j.url || "")
+    ? ` <a href="${esc(j.url)}" target="_blank" rel="noopener">Read the posting on the employer’s site</a>.` : ".";
+  const show = (html) => {
     sheetDescHtml = html;
     box.innerHTML = html
       ? `<h3>About the role</h3><div class="jd-body">${cleanHtml(html)}</div>`
-      : '<p class="note">The description isn’t available here yet. Use Apply to read the full posting on the employer’s site.</p>';
+      : `<p class="note">The description isn’t available here, so tailoring can’t check it against the posting.${readPosting}</p>`;
+  };
+  try {
+    const html = await postingText(j);
+    if (token === detailToken) show(html);
   } catch {
-    if (token === detailToken) box.innerHTML = '<p class="note">Couldn’t load the description. Use Apply to read the full posting.</p>';
+    if (token !== detailToken) return;
+    box.innerHTML = `<p class="note">Couldn’t load the description right now.</p><div class="sheet-actions"><button type="button" class="btn" id="desc-retry">Try again</button></div>`;
+    $("#desc-retry").addEventListener("click", () => renderDescription(j));
   }
 }
 
@@ -765,7 +782,6 @@ function openSheet(j) {
     ["Source", j.ats],
     ["Posted", j.posted != null ? `${fmtDay(j.posted)} (${ago(j.posted)})` : "Not listed"],
   ].map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("");
-  $("#sheet-apply").href = j.url;
   $("#sheet").hidden = false;
   updateSheetSave();
   renderDescription(j);
@@ -834,9 +850,10 @@ function wire() {
   setupResumeUpload();
   $("#resume-open").addEventListener("click", showProfile);
   $("#pf-save").addEventListener("click", saveProfileDetails);
-  setDescriptionSource(() => sheetDescHtml);
-  setLiveDescriptionLoader((url) => liveDescription(url));
+  setPostingLoader((job) => (job.id != null ? postingText(job) : liveDescription(job.url).catch(() => "")));
+  setSignInHandler(() => openSignIn());
   initApply();
+  initFlow();
   document.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
     const kind = b.dataset.add;
     $(`#${ROW_LISTS[kind]}`).appendChild(profileRow(kind));
@@ -903,10 +920,16 @@ function wire() {
   $("#jobs").addEventListener("click", (e) => {
     const d = e.target.closest("button[data-detail]");
     if (d) openSheet(jobById.get(Number(d.dataset.detail)));
+    const a = e.target.closest("button[data-apply]");
+    if (a) openApplyEntry(jobById.get(Number(a.dataset.apply)));
   });
+  $("#sheet-apply").addEventListener("click", () => { if (sheetJob) openApplyEntry(sheetJob); });
   $("#sheet-close").addEventListener("click", closeSheet);
   $("#sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+  document.addEventListener("keydown", (e) => {
+    // Escape closes the dialog on top first. The details panel closes only when no dialog is open.
+    if (e.key === "Escape" && !$("#sheet").hidden && !document.querySelector("dialog[open]")) closeSheet();
+  });
   $("#sheet-save").addEventListener("click", async () => {
     if (!sheetJob) return;
     const b = $("#sheet-save");
@@ -951,7 +974,14 @@ async function main() {
   }
   renderCoverage();
   syncJobControls();
-  account.onChange = () => { updateAuthUI(); refreshSaveButtons(); updateSheetSave(); if (S.tab === "saved") loadSaved(); if (S.tab === "applications") renderTracker(); };
+  account.onChange = () => {
+    updateAuthUI(); refreshSaveButtons(); updateSheetSave();
+    if (S.tab === "saved") loadSaved();
+    if (S.tab === "applications") renderTracker();
+    // Someone who chose a job, signed in, and came back returns to that job's application.
+    const pending = account.user ? takePendingApply() : null;
+    if (pending) openFlow(pending);
+  };
   initAccount().then(() => { updateAuthUI(); refreshSaveButtons(); });
   wire();
   showTab(S.tab);

@@ -1,0 +1,468 @@
+// The in-app application flow: materials, answers, account setup, review, then an explicit open of the employer page.
+// Nothing here submits an application. The applicant opens the employer's page, submits it there, and records it here.
+// Demo jobs (demo:// addresses) run against a mock application page inside this app with synthetic data.
+import { account } from "./account.js";
+import { DEMO_JOB, FIELDS, applyAnswers, getPath, isDemoJob, missingRequired, STEP_LABEL, supportText } from "./flow-model.js";
+import { getApplication, saveStatus, saveDoc, draftFor, loadProfile, saveProfile, postingHtml, resetDemo } from "./store.js";
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "");
+const plain = (html) => String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const filled = (v) => v !== undefined && v !== null && String(v).trim() !== "";
+const PENDING_KEY = "jc.pendingApply";
+const PENDING_MS = 30 * 60 * 1000;
+
+const STEPS = [["materials", "Materials"], ["answers", "Your answers"], ["account", "Account setup"], ["review", "Review and submit"]];
+const MAX_TEXT = 30000;
+
+let st = null;          // the open flow: { job, demo, step, profile, app, posting, draft, kind, edited, mock, approved, opened, receipt, error }
+let signInHandler = () => {};
+export function setSignInHandler(fn) { signInHandler = fn; }
+
+// ---------- entry points
+// The card and details Apply buttons call this. It never opens the employer's site directly.
+export function openApplyEntry(job) {
+  if (!job) return;
+  if (isDemoJob(job)) return openFlow(job);
+  if (!account.user) return openGate(job);
+  return openFlow(job);
+}
+
+export function openDemo() { return openFlow(DEMO_JOB); }
+
+// After signing in, the applicant returns to the job they chose. Read once, then cleared.
+export function takePendingApply() {
+  try {
+    const raw = sessionStorage.getItem(PENDING_KEY);
+    sessionStorage.removeItem(PENDING_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && p.at && Date.now() - p.at < PENDING_MS && p.job ? p.job : null;
+  } catch { return null; }
+}
+function setPending(job) {
+  try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ at: Date.now(), job })); } catch { /* storage can be blocked */ }
+}
+
+export async function openFlow(job) {
+  const demo = isDemoJob(job);
+  if (demo) resetDemo();
+  if (!demo && !account.user) return openGate(job);
+  st = { job, demo, step: "materials", profile: null, app: null, posting: "", draft: null, kind: "resume",
+    edited: { resume: "", cover: "" }, mock: false, approved: false, opened: false, receipt: null, error: "" };
+  const dlg = $("#flow-dialog");
+  if (!dlg.open) dlg.showModal();
+  paint("<p class=\"note\" role=\"status\">Loading your application…</p>");
+  const [p, a, text] = await Promise.all([loadProfile(demo), getApplication(job), postingHtml(job)]);
+  if (!st || st.job !== job) return;
+  st.posting = plain(text);
+  if (!p.ok) st.error = p.error || "Couldn't load your profile. Try again.";
+  st.profile = p.profile || {};
+  if (!a.ok) st.error = a.data?.error || "Couldn't load this application. Try again.";
+  st.app = a.ok ? a.data : { application: null, docs: [] };
+  const latest = (k) => (st.app.docs || []).find((d) => d.kind === k);
+  st.edited.resume = latest("resume")?.body || "";
+  st.edited.cover = latest("cover")?.body || "";
+  render();
+}
+
+function openGate(job) {
+  const g = $("#gate-root");
+  const common = `<div class="pf-top"><h2>${account.enabled ? "Sign in to apply" : "Applications need accounts"}</h2>
+    <button type="button" class="link" data-gate="close">Close</button></div>`;
+  if (account.enabled) {
+    g.innerHTML = `${common}
+      <p class="note">Sign in to tailor a resume and cover letter for <strong>${esc(job.title)}</strong> at ${esc(job.company)}, track the application, and keep a receipt.
+        After you sign in, you'll come back to this job.</p>
+      <div class="sheet-actions"><button type="button" class="btn primary" data-gate="signin">Sign in</button>
+        <button type="button" class="btn" data-gate="demo">Try the demo</button></div>
+      <p class="note">The demo uses made-up data. It saves nothing and submits nothing.</p>`;
+  } else {
+    const link = /^https?:\/\//.test(job.url || "");
+    g.innerHTML = `${common}
+      <p class="note">This site isn't set up for accounts yet, so applications can't be saved here. You can try the demo, or open the employer's posting yourself.</p>
+      <div class="sheet-actions"><button type="button" class="btn primary" data-gate="demo">Try the demo</button>
+        ${link ? `<button type="button" class="btn" data-gate="posting">Open the employer's posting</button>` : ""}</div>
+      <p class="note">Opening the posting goes to the employer's site. Nothing here tracks it.</p>`;
+  }
+  g.dataset.job = job.url;
+  setPending(job);
+  g.onclick = (e) => {
+    const b = e.target.closest("[data-gate]");
+    if (!b) return;
+    const act = b.dataset.gate;
+    if (act === "close") $("#gate-dialog").close();
+    if (act === "demo") { $("#gate-dialog").close(); openDemo(); }
+    if (act === "signin") { $("#gate-dialog").close(); signInHandler(); }
+    if (act === "posting") window.open(job.url, "_blank", "noopener");
+  };
+  $("#gate-dialog").showModal();
+}
+
+// ---------- rendering
+function paint(inner) {
+  const root = $("#flow-root");
+  root.innerHTML = inner;
+}
+
+function header(job) {
+  return `<div class="pf-top flow-top"><div><h2>Apply: ${esc(job.title)}</h2>
+      <p class="note">${esc(job.company)}${job.loc ? " · " + esc(job.loc) : ""}${job.ats ? " · " + esc(job.ats) : ""}</p></div>
+      <button type="button" class="link" data-act="close">Close</button></div>`;
+}
+function demoBanner() {
+  return `<p class="demo-banner" role="note"><strong>DEMO · synthetic data.</strong> Made-up applicant and posting. Nothing is saved to your account, sent, or submitted.</p>`;
+}
+function stepper() {
+  return `<ol class="flow-steps">${STEPS.map(([id, label], i) => `<li><button type="button" data-act="go" data-step="${id}" ${st.step === id ? 'aria-current="step"' : ""}>
+    <span class="flow-n">${i + 1}</span>${esc(label)}</button></li>`).join("")}</ol>`;
+}
+
+function render() {
+  if (!st) return;
+  const job = st.job;
+  const err = st.error ? `<p class="warn-box" role="alert">${esc(st.error)}</p>` : "";
+  let body;
+  if (st.mock) body = mockApplication();
+  else if (st.step === "materials") body = materialsStep();
+  else if (st.step === "answers") body = answersStep();
+  else if (st.step === "account") body = accountStep();
+  else body = reviewStep();
+  paint(`${header(job)}${st.demo ? demoBanner() : ""}${stepper()}${err}${body}`);
+}
+
+// Step 1: tailored resume and cover letter, checked against the posting and the profile.
+function materialsStep() {
+  const hasText = !!st.posting;
+  const d = st.draft;
+  const link = /^https?:\/\//.test(st.job.url) ? `<a href="${esc(st.job.url)}" target="_blank" rel="noopener">Read the posting on the employer's site</a>` : "";
+  const intro = `<p class="note">Drafts use only what's in your profile and resume. Edit anything before you save.</p>`;
+  if (!hasText) {
+    return `${intro}<p class="warn-box">The posting's text isn't available on this site, so a draft can't be checked against it. ${link}
+      You can still answer questions and review the application.</p>${nav({ next: "answers" })}`;
+  }
+  const hasEditor = !!(d || st.edited.resume || st.edited.cover);
+  if (!hasEditor) {
+    return `${intro}<div class="sheet-actions"><button type="button" class="btn primary" data-act="draft">Draft resume and cover letter</button></div>
+      <p id="flow-msg" class="note" role="status"></p>${nav({ next: "answers" })}`;
+  }
+  const gaps = d?.profileGaps?.length
+    ? `<div class="warn-box"><strong>Needs your answer before you apply:</strong><ul>${d.profileGaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
+        <button type="button" class="btn" data-act="go" data-step="answers">Answer these</button></div>` : "";
+  const missing = d?.missing?.length
+    ? `<div class="warn-box"><strong>The posting asks for these. Your profile doesn't show them, so the draft doesn't claim them:</strong><ul>${d.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div>` : "";
+  const flags = d?.flags?.length
+    ? `<div class="warn-box"><strong>Check these. They aren't in your profile, resume or the posting:</strong><ul>${d.flags.map((f) => `<li>${esc(f.message)}</li>`).join("")}</ul></div>` : "";
+  const notes = d?.notes?.length ? `<details><summary>What changed</summary><ul>${d.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></details>` : "";
+  const kind = st.kind;
+  const body = st.edited[kind];
+  const diff = kind === "resume" ? `<div class="diff" aria-label="Changes from your original resume">${diffHtml(d?.originalResume || "", body)}</div>` : "";
+  return `${intro}${gaps}${missing}${flags}${notes}
+    <div class="tabs-inline" role="tablist">
+      <button type="button" role="tab" data-act="kind" data-kind="resume" aria-selected="${kind === "resume"}">Resume</button>
+      <button type="button" role="tab" data-act="kind" data-kind="cover" aria-selected="${kind === "cover"}">Cover letter</button>
+    </div>
+    ${diff}
+    <label class="pf-field wide"><span>${kind === "resume" ? "Your tailored resume (edit me)" : "Your cover letter (edit me)"}</span>
+      <textarea id="flow-body" rows="12" maxlength="${MAX_TEXT}">${esc(body)}</textarea></label>
+    <p class="note" id="flow-count">${body.length.toLocaleString()} / ${MAX_TEXT.toLocaleString()}</p>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" data-act="save-version">Save as new version</button>
+      <button type="button" class="btn" data-act="draft">Draft again</button>
+    </div>
+    <p id="flow-msg" class="note" role="status"></p>
+    ${versionsList(kind)}
+    ${nav({ next: "answers" })}`;
+}
+
+function versionsList(kind) {
+  const docs = (st.app.docs || []).filter((x) => x.kind === kind);
+  if (!docs.length) return `<p class="note">No saved versions yet.</p>`;
+  return `<h3>Saved versions</h3><ul class="versions">${docs.map((x) => `<li><span>v${x.version} · ${esc(x.source === "edited" ? "edited by you" : "drafted")} · ${esc(fmtDate(x.created_at))}</span>
+    <button type="button" class="link" data-act="load" data-id="${esc(x.id)}">Load</button></li>`).join("")}</ul>`;
+}
+
+// Step 2: every question the form asks. Blank answers are shown as "Needs your answer" and typed in here.
+function answersStep() {
+  const p = st.profile || {};
+  const blanks = missingRequired(p);
+  const rows = FIELDS.map((f) => {
+    const v = getPath(p, f.path);
+    if (filled(v)) return `<tr><th scope="row">${esc(f.label)}${f.required ? "" : ' <span class="note">(optional)</span>'}</th><td>${esc(v)}</td></tr>`;
+    const input = f.kind === "yn"
+      ? `<select data-field="${f.path}" aria-label="${esc(f.label)}"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select>`
+      : `<input type="text" data-field="${f.path}" aria-label="${esc(f.label)}" maxlength="200">`;
+    return `<tr><th scope="row">${esc(f.label)}${f.required ? " *" : ""}</th><td>${input}<br><span class="needs">Needs your answer</span></td></tr>`;
+  }).join("");
+  const gate = blanks.length
+    ? `<p class="warn-box">Answer the ${blanks.length} required question${blanks.length === 1 ? "" : "s"} marked * before you can review: ${esc(blanks.join(", "))}.</p>`
+    : `<p class="note">All required questions are answered.</p>`;
+  return `<p class="note">Your answers come from My profile. Only blank questions are editable here. Answers you type are saved to your profile${st.demo ? " (demo: only in this tab)" : ""}.</p>
+    ${gate}
+    ${blanks.length || FIELDS.some((f) => !filled(getPath(p, f.path))) ? `<form id="flow-answers" class="answers-form"><table class="answers"><tbody>${rows}</tbody></table>
+      <div class="sheet-actions"><button type="button" class="btn" data-act="save-answers">Save answers</button></div></form>`
+      : `<table class="answers"><tbody>${rows}</tbody></table>`}
+    <p id="flow-msg" class="note" role="status"></p>
+    ${nav({ next: "account", nextDisabled: blanks.length > 0, nextLabel: "Continue to account setup" })}`;
+}
+
+// Step 3: account and verification. The app records what the applicant confirms and does nothing else.
+function accountStep() {
+  const hist = st.app.application?.history || [];
+  const done = hist.filter((h) => h.step).map((h) => `<li>${esc(fmtDate(h.at))} · ${esc(STEP_LABEL[h.step] || h.step)}</li>`).join("");
+  return `<p class="note">${esc(supportText(st.job.ats))}</p>
+    <p class="note">The app doesn't create accounts, choose passwords, read your email, or enter verification codes. Use your own password manager, and record each step here after you finish it.</p>
+    <div class="sheet-actions">
+      <button type="button" class="btn" data-act="step" data-step="account_created_by_user">I created my account</button>
+      <button type="button" class="btn" data-act="step" data-step="verification_waiting">Waiting for verification email</button>
+      <button type="button" class="btn" data-act="step" data-step="verification_done">I verified my email</button>
+    </div>
+    <h3>Recorded</h3>
+    ${done ? `<ul class="hist">${done}</ul>` : `<p class="note">Nothing recorded yet.</p>`}
+    <p id="flow-msg" class="note" role="status"></p>
+    ${nav({ next: "review" })}`;
+}
+
+// Step 4: everything that goes to the employer, then the one explicit open action.
+function reviewStep() {
+  const p = st.profile || {};
+  const blanks = missingRequired(p);
+  const resume = (st.app.docs || []).find((x) => x.kind === "resume");
+  const cover = (st.app.docs || []).find((x) => x.kind === "cover");
+  const destination = st.demo ? "Demo mock application (no real destination)" : st.job.url;
+  const answers = FIELDS.map((f) => {
+    const v = getPath(p, f.path);
+    return `<tr><th scope="row">${esc(f.label)}</th><td>${filled(v) ? esc(v) : `<span class="needs">Needs your answer</span>`}</td></tr>`;
+  }).join("");
+  const custom = (p.custom || []).map((q) => `<tr><th scope="row">${esc(q.question)}</th><td>${esc(q.answer)}</td></tr>`).join("");
+  const receipt = st.receipt
+    ? `<div class="receipt-box" role="status"><strong>${st.demo ? "Demo receipt" : "Receipt recorded"}</strong>
+        <p class="note">Submitted ${esc(fmtDate(st.receipt.at))} · resume v${st.receipt.resume_version ?? "none"} · cover letter v${st.receipt.cover_version ?? "none"}${st.demo ? " · demo only, nothing was sent" : ""}</p></div>` : "";
+  return `${receipt}
+    <dl class="facts"><div><dt>Destination</dt><dd>${esc(destination)}</dd></div><div><dt>Role</dt><dd>${esc(st.job.title)} · ${esc(st.job.company)}</dd></div></dl>
+    <h3>Attachments</h3>
+    <ul class="attach">
+      <li>${resume ? `Resume v${resume.version} (tailored)` : "No tailored resume saved. Upload your own on the employer's site, or go back to Materials."}</li>
+      <li>${cover ? `Cover letter v${cover.version}` : "No cover letter saved yet."}</li>
+    </ul>
+    <h3>Your answers</h3>
+    <table class="answers"><tbody>${answers}${custom}</tbody></table>
+    ${blanks.length ? `<p class="warn-box">Still needed before you can approve: ${esc(blanks.join(", "))}. <button type="button" class="link" data-act="go" data-step="answers">Answer them</button></p>` : ""}
+    <h3>Before you open the employer's page</h3>
+    <ul class="checklist">
+      <li>Create or sign in to an account, if the site asks.</li>
+      <li>Solve any CAPTCHA or security check, and enter any code from email yourself.</li>
+      <li>Upload the resume file, and answer any question not listed above.</li>
+      <li>Read the terms and tick consent boxes yourself. Press the final submit button yourself.</li>
+    </ul>
+    <label class="pf-check wide approve"><input type="checkbox" id="flow-approve" data-act="approve" ${st.approved ? "checked" : ""} ${blanks.length ? "disabled" : ""}>
+      I've checked every answer and attachment above, and they're accurate.</label>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" data-act="open" ${st.approved ? "" : "disabled"}>${st.demo ? "Open mock application" : "Open employer application"}</button>
+      <button type="button" class="btn" data-act="copy">Copy my answers</button>
+      <button type="button" class="btn" data-act="submitted" ${st.approved && st.opened && !st.receipt ? "" : "disabled"}>${st.demo ? "Record demo submission" : "I submitted it"}</button>
+    </div>
+    <p class="note">${st.opened ? "Opened. Submit the form there yourself, then come back and record it here." : "Nothing is sent until you submit the form on the employer's site."}</p>
+    <p id="flow-msg" class="note" role="status"></p>
+    ${nav({})}`;
+}
+
+// The demo's stand-in for an employer form. It is filled with synthetic answers and cannot submit anything.
+function mockApplication() {
+  const p = st.profile || {};
+  const fields = FIELDS.map((f) => `<div class="mock-row"><span>${esc(f.label)}</span><span>${esc(getPath(p, f.path) || "")}</span></div>`).join("");
+  return `<div class="mock-ats" aria-label="Demo application form">
+      <p class="demo-banner"><strong>Mock employer form · DEMO.</strong> Synthetic answers. The submit button is disabled, and nothing leaves this page.</p>
+      <h3>Application form (mock)</h3>${fields}
+      <div class="sheet-actions">
+        <button type="button" class="btn" disabled>Submit application (disabled in demo)</button>
+        <button type="button" class="btn" data-act="back-review">Back to review</button>
+      </div>
+      <p class="note">Use “Record demo submission” on the review step to see the receipt.</p></div>`;
+}
+
+function nav({ next, nextDisabled = false, nextLabel = "Continue" }) {
+  const prevId = st.step !== "materials" ? STEPS[STEPS.findIndex(([id]) => id === st.step) - 1]?.[0] : null;
+  return `<div class="sheet-actions flow-nav">
+    ${prevId ? `<button type="button" class="btn" data-act="go" data-step="${prevId}">Back</button>` : ""}
+    ${next ? `<button type="button" class="btn primary" data-act="go" data-step="${next}" ${nextDisabled ? "disabled" : ""}>${esc(nextLabel)}</button>` : ""}
+  </div>`;
+}
+
+// ---------- diff for the resume (same line diff as lib/tailor.js)
+function diffHtml(before, after) {
+  const rows = lineDiffLocal(before, after);
+  if (!rows.some((r) => r.type !== "same")) return `<p class="note">No changes from your original resume yet.</p>`;
+  return rows.map((r) => `<div class="dl dl-${r.type}">${r.type === "add" ? "+ " : r.type === "del" ? "− " : "  "}${esc(r.text)}</div>`).join("");
+}
+function lineDiffLocal(before, after) {
+  const a = String(before || "").split("\n"), b = String(after || "").split("\n");
+  if (a.length * b.length > 250000) return [{ type: "del", text: a.join("\n") }, { type: "add", text: b.join("\n") }];
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ type: "same", text: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) out.push({ type: "del", text: a[i++] });
+    else out.push({ type: "add", text: b[j++] });
+  }
+  while (i < n) out.push({ type: "del", text: a[i++] });
+  while (j < m) out.push({ type: "add", text: b[j++] });
+  return out;
+}
+
+// ---------- actions
+function msg(t) { const m = $("#flow-msg"); if (m) m.textContent = t; }
+function currentStatus() { return st.app.application?.status || "preparing"; }
+
+async function reloadApp() {
+  const a = await getApplication(st.job);
+  if (a.ok) st.app = a.data;
+}
+
+async function draft() {
+  const job = st.job;
+  const text = st.posting;
+  paint(`${header(job)}${st.demo ? demoBanner() : ""}${stepper()}<p class="note" role="status">Drafting from your profile and resume. Only facts you've entered are used.</p>
+    <div class="skeleton" aria-hidden="true" style="height:120px"></div>`);
+  const r = await draftFor(job, text);
+  if (st.job !== job) return;
+  if (!r.ok) {
+    st.error = r.data?.error || "Couldn't draft right now. Try again.";
+    if (r.data?.needsProfile) st.error = "Fill in My profile first, then draft again.";
+    st.step = "materials";
+    return render();
+  }
+  st.error = "";
+  st.draft = r.data;
+  st.edited.resume = r.data.resume;
+  st.edited.cover = r.data.cover;
+  render();
+}
+
+async function saveVersion() {
+  const kind = st.kind;
+  const text = st.edited[kind].trim();
+  if (!text) return msg("Nothing to save. Write or draft something first.");
+  const d = st.draft || {};
+  const source = st.draft && text === (kind === "resume" ? d.resume : d.cover) ? "ai" : "edited";
+  const flags = kind === "resume" ? d.flags || [] : [];
+  const r = await saveDoc(st.job, kind, text, flags, source);
+  if (!r.ok) return msg(r.data?.error || "Couldn't save. Try again.");
+  const gaps = (d.profileGaps || []).length + (d.missing || []).length;
+  await saveStatus(st.job, gaps ? "needs-info" : "ready-for-review", st.app.application?.notes || "");
+  await reloadApp();
+  render();
+  msg(`Saved ${kind === "resume" ? "resume" : "cover letter"} version ${r.data.doc.version}.`);
+}
+
+async function saveAnswers() {
+  const answers = {};
+  for (const el of document.querySelectorAll("#flow-answers [data-field]")) answers[el.dataset.field] = el.value;
+  const next = applyAnswers(st.profile, answers);
+  const r = await saveProfile(next, st.demo);
+  if (!r.ok) return msg(r.error || "Couldn't save your answers. Try again.");
+  st.profile = next;
+  render();
+  msg(missingRequired(next).length ? "Saved. Some required answers are still blank." : "Saved. All required answers are in.");
+}
+
+async function recordStep(step) {
+  const res = await saveStatus(st.job, currentStatus(), st.app.application?.notes || "", { step });
+  if (!res.ok) return msg(res.data?.error || "Couldn't record that step.");
+  st.app.application = res.data.application;
+  render();
+  msg(`Recorded: ${STEP_LABEL[step]}.`);
+}
+
+function openEmployer() {
+  if (st.demo) { st.mock = true; st.opened = true; return render(); }
+  if (!/^https?:\/\//.test(st.job.url)) return msg("This posting has no employer link to open.");
+  window.open(st.job.url, "_blank", "noopener");
+  st.opened = true;
+  const pre = !st.app.application || st.app.application.status === "saved";
+  if (pre) saveStatus(st.job, "preparing", st.app.application?.notes || "").then(reloadApp).then(render);
+  render();
+  msg("Opened the employer's page. Come back here to record the submission.");
+}
+
+async function recordSubmission() {
+  if (!st.approved || !st.opened) return;
+  const question = st.demo
+    ? "Record this demo submission? Nothing is sent anywhere."
+    : "Did you submit this application on the employer's site? This records a receipt with the resume and cover letter versions you used.";
+  if (!confirm(question)) return;
+  const docs = st.app.docs || [];
+  const resume = docs.find((x) => x.kind === "resume");
+  const cover = docs.find((x) => x.kind === "cover");
+  const at = new Date().toISOString();
+  const res = await saveStatus(st.job, "submitted", st.app.application?.notes || "", {
+    step: "submitted_by_user",
+    receipt: { destination: st.demo ? "demo (mock, nothing sent)" : st.job.url, resume_version: resume?.version ?? null, cover_version: cover?.version ?? null },
+  });
+  if (!res.ok) return msg(res.data?.error || "Couldn't record. Try again.");
+  st.app.application = res.data.application;
+  st.receipt = { at, resume_version: resume?.version ?? null, cover_version: cover?.version ?? null };
+  st.mock = false;
+  render();
+}
+
+function answersText() {
+  const p = st.profile || {};
+  const docs = st.app.docs || [];
+  const resume = docs.find((x) => x.kind === "resume");
+  const cover = docs.find((x) => x.kind === "cover");
+  const lines = [`${st.job.title} · ${st.job.company}`, st.demo ? "(demo, synthetic)" : st.job.url, ""];
+  for (const f of FIELDS) if (filled(getPath(p, f.path))) lines.push(`${f.label}: ${getPath(p, f.path)}`);
+  for (const q of p.custom || []) lines.push("", q.question, q.answer);
+  if (resume) lines.push("", `Resume: v${resume.version}`);
+  if (cover) lines.push("", "Cover letter:", cover.body);
+  return lines.join("\n");
+}
+
+async function copyAnswers() {
+  try { await navigator.clipboard.writeText(answersText()); msg("Answers copied. Paste them into the form."); }
+  catch { msg("Couldn't copy. Select the text and copy it yourself."); }
+}
+
+// ---------- wiring (once)
+export function initFlow() {
+  const dlg = $("#flow-dialog");
+  const root = $("#flow-root");
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+  root.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-act]");
+    if (!b || !st) return;
+    const act = b.dataset.act;
+    if (act === "close") return dlg.close();
+    if (act === "go") { st.step = b.dataset.step; st.mock = false; return render(); }
+    if (act === "kind") { st.kind = b.dataset.kind; return render(); }
+    if (act === "draft") return draft();
+    if (act === "save-version") return saveVersion();
+    if (act === "save-answers") return saveAnswers();
+    if (act === "step") return recordStep(b.dataset.step);
+    if (act === "load") {
+      const doc = (st.app.docs || []).find((x) => String(x.id) === b.dataset.id);
+      if (doc) { st.edited[st.kind] = doc.body; render(); }
+      return;
+    }
+    if (act === "open") return openEmployer();
+    if (act === "back-review") { st.mock = false; return render(); }
+    if (act === "copy") return copyAnswers();
+    if (act === "submitted") return recordSubmission();
+  });
+  root.addEventListener("change", (e) => {
+    if (e.target.id === "flow-approve") { st.approved = e.target.checked; render(); }
+  });
+  root.addEventListener("input", (e) => {
+    if (e.target.id === "flow-body") {
+      st.edited[st.kind] = e.target.value;
+      const c = $("#flow-count");
+      if (c) c.textContent = `${e.target.value.length.toLocaleString()} / ${MAX_TEXT.toLocaleString()}`;
+      if (st.kind === "resume") { const d = root.querySelector(".diff"); if (d) d.innerHTML = diffHtml(st.draft?.originalResume || "", e.target.value); }
+    }
+  });
+  $("#flow-dialog").addEventListener("close", () => { st = null; });
+}

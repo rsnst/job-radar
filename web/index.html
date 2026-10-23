@@ -287,16 +287,16 @@
     <section id="sheet-desc" class="jd" aria-live="polite"></section>
     <section id="sheet-fit" class="fit" hidden></section>
     <section id="sheet-apply-kit" class="fit" hidden></section>
-    <p class="note">Applications are submitted on the employer’s site. Job Compass doesn’t apply for you.</p>
+    <p class="note">Applications are submitted on the employer’s site. Job Compass doesn’t apply for you. Apply opens the application flow first.</p>
     <div class="sheet-actions">
-      <a id="sheet-apply" class="btn primary" href="#" target="_blank" rel="noopener">Apply on employer site</a>
+      <button type="button" id="sheet-apply" class="btn primary">Apply</button>
       <button type="button" id="sheet-save" class="btn" hidden>Save job</button>
     </div>
   </div>
 </aside>
 
-<dialog id="tailor-dialog" class="signin profile-dialog" aria-labelledby="tailor-root"><div id="tailor-root"></div></dialog>
-<dialog id="review-dialog" class="signin profile-dialog" aria-labelledby="review-root"><div id="review-root"></div></dialog>
+<dialog id="flow-dialog" class="signin profile-dialog flow-dialog" aria-label="Application"><div id="flow-root"></div></dialog>
+<dialog id="gate-dialog" class="signin profile-dialog" aria-label="Apply"><div id="gate-root"></div></dialog>
 
 <script src="vendor/index.js"></script>
 <script type="module" src="app.js"></script>
