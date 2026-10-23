@@ -3,6 +3,8 @@ import { startAdminRuns, stopAdminRuns } from "./admin-runs.js";
 import { initApply, renderApplyKit, renderTracker } from "./apply.js";
 import { initFlow, openApplyEntry, openFlow, setSignInHandler, takePendingApply } from "./flow.js";
 import { setPostingLoader } from "./store.js";
+import { initIntake, resumeIntake, startIntake } from "./intake.js";
+import { mergeImported, parseResume } from "./resume-parse.js";
 import { account, initAccount, toggleSave, signIn, signOut, signInWithEmail, signInWithPassword, signUpWithPassword, listSaved, apiFetch } from "./account.js";
 
 const $ = (s) => document.querySelector(s);
@@ -758,11 +760,31 @@ async function readResumeFile(file) {
     const clipped = text.length > 20000;
     $("#profile-text").value = clipped ? text.slice(0, 20000) : text;
     updateProfileCount();
-    setProfileMsg(`Read ${name}. Check the text below, then save.` + (clipped ? " It was trimmed to 20,000 characters." : ""));
+    setProfileMsg(`Read ${name}. Check the text below, then save it, or choose Fill profile from this resume.` + (clipped ? " It was trimmed to 20,000 characters." : ""));
     $("#profile-text").focus();
   } catch {
     setProfileMsg("Couldn't read that file. Try another format, or paste the text.");
   }
+}
+
+// Copies what the resume text says into blank profile fields. Nothing is saved until the person saves.
+function importFromResume() {
+  const text = $("#profile-text").value;
+  if (text.trim().length < 40) return setProfileMsg("Add your resume first: upload a file or paste the text above.");
+  const { data, found } = parseResume(text);
+  if (!found.length) return setProfileMsg("Couldn't find profile details in that text. Fill them in by hand.");
+  const form = $("#profile-form");
+  const before = new Map([...form.querySelectorAll("[name]")].map((el) => [el, el.type === "checkbox" ? el.checked : el.value]));
+  const listWasEmpty = Object.fromEntries(Object.keys(ROW_LISTS).map((k) => [k, !$(`#${ROW_LISTS[k]}`).children.length]));
+  const { profile, filled } = mergeImported(readProfileForm(), data);
+  if (!filled.length) return setProfileMsg("Everything this resume says is already in your profile. Nothing changed.");
+  fillProfileForm(profile);
+  for (const el of form.querySelectorAll("[name]")) {
+    const now = el.type === "checkbox" ? el.checked : el.value;
+    if (now !== before.get(el)) { el.classList.add("imported"); el.addEventListener("input", () => el.classList.remove("imported"), { once: true }); }
+  }
+  for (const k of Object.keys(ROW_LISTS)) if (listWasEmpty[k]) for (const row of $(`#${ROW_LISTS[k]}`).children) row.classList.add("imported");
+  setProfileMsg(`Filled ${filled.length} blank section${filled.length === 1 ? "" : "s"} from your resume (${found.join(", ")}). Highlighted fields are new: check them, then choose Save profile. Existing entries weren't changed. Work authorization, EEO and salary are never read from a resume.`);
 }
 
 function setupResumeUpload() {
@@ -851,6 +873,7 @@ function wire() {
   $("#chat-open").addEventListener("click", openChat);
   $("#chat-close").addEventListener("click", closeChat);
   $("#chat-form").addEventListener("submit", sendChat);
+  $("#profile-import").addEventListener("click", importFromResume);
   $("#profile-save").addEventListener("click", () => saveProfile($("#profile-text").value.trim()));
   $("#profile-delete").addEventListener("click", () => { if (confirm("Delete your resume? This can't be undone.")) saveProfile(""); });
   $("#profile-close").addEventListener("click", () => $("#profile-dialog").close());
@@ -861,6 +884,7 @@ function wire() {
   setSignInHandler(() => openSignIn());
   initApply();
   initFlow();
+  initIntake({ openSignIn, openApply: openApplyEntry, showTab });
   document.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
     const kind = b.dataset.add;
     $(`#${ROW_LISTS[kind]}`).appendChild(profileRow(kind));
@@ -987,9 +1011,10 @@ async function main() {
     if (S.tab === "applications") renderTracker();
     // Someone who chose a job, signed in, and came back returns to that job's application.
     const pending = account.user ? takePendingApply() : null;
-    if (pending) openFlow(pending);
+    if (pending) openFlow(pending); else resumeIntake();
   };
-  initAccount().then(() => { updateAuthUI(); refreshSaveButtons(); });
+  // The add-a-job dialog waits for accounts to be ready, so it knows whether to ask for sign-in.
+  initAccount().then(() => { updateAuthUI(); refreshSaveButtons(); }).finally(startIntake);
   wire();
   showTab(S.tab);
   $("#jobs").innerHTML = '<li class="skeleton"></li>'.repeat(4);
@@ -1009,3 +1034,5 @@ async function main() {
   if (S.tab === "companies") { coLoaded = true; loadCompanies(true); }
 }
 main();
+// The app shell works offline and installs on a phone. The job database and every /api call always go to the network.
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});

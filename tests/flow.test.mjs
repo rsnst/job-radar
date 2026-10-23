@@ -135,3 +135,26 @@ test("step labels say the applicant recorded the step, never that the app did it
     assert.ok(label.startsWith("You recorded:"), label);
   }
 });
+
+import { addCustomAnswer } from "../web/flow-model.js";
+
+test("custom answers: added, updated in place, never duplicated, never invented", () => {
+  const base = { custom: [{ question: "Why us?", answer: "old" }] };
+  const upd = addCustomAnswer(base, "  why US? ", "new answer");
+  assert.equal(upd.ok, true);
+  assert.equal(upd.updated, true);
+  assert.deepEqual(upd.profile.custom, [{ question: "Why us?", answer: "new answer" }]);
+  assert.equal(base.custom[0].answer, "old", "input is not mutated");
+  const add = addCustomAnswer(base, "Favorite tool?", "dbt");
+  assert.equal(add.profile.custom.length, 2);
+  assert.equal(addCustomAnswer(base, "Question only", "").ok, false);
+  assert.equal(addCustomAnswer(base, "", "answer only").ok, false);
+});
+
+test("custom answers for one application only carry a local flag, and the 25 cap holds", () => {
+  const local = addCustomAnswer({}, "Notice period?", "2 weeks", { local: true });
+  assert.deepEqual(local.profile.custom, [{ question: "Notice period?", answer: "2 weeks", local: true }]);
+  const full = { custom: Array.from({ length: 25 }, (_, i) => ({ question: `q${i}`, answer: "a" })) };
+  assert.equal(addCustomAnswer(full, "one more", "x").ok, false);
+  assert.equal(addCustomAnswer(full, "q3", "changed").ok, true, "updating an existing one is still allowed");
+});
