@@ -3,6 +3,12 @@
 import { currentUser, restHeaders } from "../lib/supa.js";
 
 const str = (v, n) => typeof v === "string" ? v.trim().slice(0, n) : "";
+// PostgREST returns identity IDs as numbers; JSON decisions must accept those too.
+const runId = (v) => {
+  if (typeof v === "number" && (!Number.isSafeInteger(v) || v <= 0)) return "";
+  const id = typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "";
+  return /^[1-9]\d{0,18}$/.test(id) && BigInt(id) <= 9223372036854775807n ? id : "";
+};
 const jobFields = ["title", "company", "loc", "ats", "pay"];
 const cleanJob = (j = {}, jobKey = "") => Object.fromEntries([
   ...jobFields.map((k) => [k, str(j[k], 200)]), ["url", jobKey],
@@ -27,7 +33,8 @@ export default async function handler(req, res) {
   const table = `${ctx.url}/rest/v1/application_runs`;
 
   if (req.method === "GET") {
-    const id = str(req.query?.id, 30);
+    const id = runId(req.query?.id);
+    if (req.query?.id != null && !id) return res.status(400).json({ error: "Choose a valid application run." });
     const jobKey = str(req.query?.job, 2000);
     const filters = id ? `id=eq.${encodeURIComponent(id)}`
       : jobKey ? `job_key=eq.${encodeURIComponent(jobKey)}` : "";
@@ -62,7 +69,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "PATCH") {
-    const id = str(req.body?.id, 30);
+    const id = runId(req.body?.id);
     const decision = ["approve", "reject", "cancel"].includes(req.body?.decision) ? req.body.decision : "";
     if (!id || !decision) return res.status(400).json({ error: "Choose a valid application decision." });
     const statusFilter = decision === "cancel" ? "status=in.(queued,running,needs_user,awaiting_review)" : "status=eq.awaiting_review";
