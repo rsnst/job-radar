@@ -538,3 +538,28 @@ button[disabled] { opacity: .55; cursor: not-allowed; }
 .queue-empty p { margin: 0; }
 .approve { margin: 12px 0 4px; font-weight: 500; }
 .support { margin: 12px 0; }
+
+/* ---------- application flow (web/flow.js) */
+.card .apply { border: 0; cursor: pointer; }
+.flow-dialog .flow-top { align-items: flex-start; }
+.flow-dialog .flow-top h2 { font-size: 1.15rem; }
+.flow-steps { list-style: none; margin: 12px 0 4px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.flow-steps button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: .85rem; font-weight: 500; }
+.flow-steps button:hover { color: var(--ink); border-color: var(--line-strong); }
+.flow-steps button[aria-current="step"] { color: var(--accent-ink); border-color: var(--accent); background: var(--accent-soft); }
+.flow-steps button:focus-visible { outline: 3px solid var(--focus); }
+.flow-n { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--line); color: var(--ink); font-size: .75rem; }
+.flow-steps button[aria-current="step"] .flow-n { background: var(--accent); color: var(--on-accent); }
+.demo-banner { background: var(--warn-soft); color: var(--ink); border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent); border-radius: var(--radius-sm); padding: 8px 12px; margin: 10px 0; font-size: .88rem; }
+.demo-banner strong { color: var(--warn); }
+.flow-nav { justify-content: space-between; margin-top: 16px; }
+.answers-form .answers select, .answers-form .answers input { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 8px; width: 100%; max-width: 260px; }
+.answers-form .answers .needs { display: inline-block; margin-top: 4px; font-size: .82rem; }
+.receipt-box { background: var(--ok-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; }
+.receipt-box strong { color: var(--ok); }
+.receipt-box .note { margin: 4px 0 0; }
+.mock-ats { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 12px; }
+.mock-ats h3 { margin: 8px 0; font-size: 1rem; }
+.mock-row { display: grid; grid-template-columns: 180px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: .9rem; overflow-wrap: anywhere; }
+.mock-row span:first-child { color: var(--muted); }
+@media (max-width: 560px) { .mock-row { grid-template-columns: 1fr; gap: 2px; } }

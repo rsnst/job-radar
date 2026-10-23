@@ -3,7 +3,7 @@
 // everything here stays disabled and the public job search works unchanged.
 
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-const cfg = window.JOB_RADAR_CONFIG || {};
+const cfg = (typeof window !== "undefined" && window.JOB_RADAR_CONFIG) || {}; // no window under node:test
 
 export const account = {
   enabled: false,
