@@ -134,7 +134,7 @@ function jobCard(j) {
       <div class="card-title">
         <p class="t"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></p>
         <div class="co"><button type="button" data-board="${j.board}" data-name="${esc(co)}">${esc(co)}</button></div>
-        ${j.pay ? `<p class="pay-line" title="Pay listed in the posting">${esc(j.pay)}</p>` : ""}
+        ${j.pay ? `<p class="pay-line" title="Pay listed in the posting">${esc(j.pay)}</p>` : '<p class="pay-line none">Pay not listed</p>'}
       </div>
       ${account.enabled ? saveButton(j) : ""}
     </div>

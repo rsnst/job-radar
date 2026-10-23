@@ -126,7 +126,27 @@ const ROUTES = [
   { match: (h) => h.endsWith(".oraclecloud.com"), fetch: oracle },
 ];
 
+// Best-effort per-IP limit: each serverless instance counts on its own, so it slows casual abuse
+// rather than stopping a determined client. The CDN cache already absorbs repeat lookups.
+const WINDOW_MS = 60_000;
+const MAX_PER_WINDOW = 60;
+const hits = new Map();
+
+function overLimit(req) {
+  const ip = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "").split(",")[0].trim() || "?";
+  const now = Date.now();
+  const t = (hits.get(ip) || []).filter((x) => now - x < WINDOW_MS);
+  t.push(now);
+  hits.set(ip, t);
+  if (hits.size > 10_000) hits.clear(); // bound memory
+  return t.length > MAX_PER_WINDOW;
+}
+
 export default async function handler(req, res) {
+  if (overLimit(req)) {
+    res.setHeader("Retry-After", "60");
+    return res.status(429).json({ error: "Too many requests. Try again in a minute." });
+  }
   let u;
   try {
     u = new URL(String(req.query?.url || ""));
