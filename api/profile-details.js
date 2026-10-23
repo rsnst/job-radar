@@ -6,15 +6,29 @@ const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const yn = (v) => (v === "yes" || v === "no" ? v : "");
 const pick = (v, options) => (options.includes(v) ? v : "");
 
+const EEO = {
+  gender: ["female", "male", "non-binary", "decline"],
+  ethnicity: ["hispanic", "asian", "black", "white", "native", "pacific", "two-or-more", "decline"],
+  veteran: ["veteran", "not-veteran", "decline"],
+  disability: ["yes", "no", "decline"],
+};
+
 export function cleanProfile(input) {
   const d = input && typeof input === "object" ? input : {};
-  const c = d.contact || {}, l = d.links || {}, w = d.work || {};
+  const c = d.contact || {}, l = d.links || {}, w = d.work || {}, a = d.address || {}, e = d.eeo || {};
   const arr = (v, n, fn) => (Array.isArray(v) ? v.slice(0, n).map(fn).filter(Boolean) : []);
+  const eeo = {};
+  for (const k of Object.keys(EEO)) eeo[k] = pick(e[k], EEO[k]);
   return {
     contact: {
-      fullName: str(c.fullName, 120), email: str(c.email, 160), phone: str(c.phone, 40),
-      city: str(c.city, 80), state: str(c.state, 60), zip: str(c.zip, 12), country: str(c.country, 60),
+      fullName: str(c.fullName, 120), preferredName: str(c.preferredName, 60), pronouns: str(c.pronouns, 40),
+      email: str(c.email, 160), phone: str(c.phone, 40),
     },
+    address: {
+      street: str(a.street, 160), apt: str(a.apt, 40), city: str(a.city, 80), state: str(a.state, 60),
+      zip: str(a.zip, 12), country: str(a.country, 60),
+    },
+    eeo,
     links: {
       linkedin: str(l.linkedin, 200), github: str(l.github, 200),
       portfolio: str(l.portfolio, 200), other: str(l.other, 200),
@@ -25,6 +39,9 @@ export function cleanProfile(input) {
       workType: pick(w.workType, ["remote", "hybrid", "onsite", "any"]),
       noticePeriod: str(w.noticePeriod, 60), startDate: str(w.startDate, 40),
       salaryMin: str(w.salaryMin, 20), salaryMax: str(w.salaryMax, 20),
+      visaStatus: str(w.visaStatus, 80), clearance: str(w.clearance, 60),
+      over18: yn(w.over18), backgroundCheck: yn(w.backgroundCheck), drugTest: yn(w.drugTest),
+      formerEmployee: str(w.formerEmployee, 200), howHeard: str(w.howHeard, 120),
     },
     experience: arr(d.experience, 15, (e) => {
       const x = { company: str(e?.company, 120), title: str(e?.title, 120), start: str(e?.start, 20),
@@ -32,10 +49,21 @@ export function cleanProfile(input) {
       return x.company || x.title ? x : null;
     }),
     education: arr(d.education, 10, (e) => {
-      const x = { school: str(e?.school, 120), degree: str(e?.degree, 120), field: str(e?.field, 120), year: str(e?.year, 10) };
+      const x = { school: str(e?.school, 120), degree: str(e?.degree, 120), field: str(e?.field, 120), gpa: str(e?.gpa, 10), year: str(e?.year, 10) };
       return x.school || x.degree ? x : null;
     }),
     skills: arr(d.skills, 60, (s) => str(s, 60)),
+    certifications: arr(d.certifications, 20, (s) => str(s, 120)),
+    languages: arr(d.languages, 10, (s) => str(s, 40)),
+    references: arr(d.references, 3, (r) => {
+      const x = { name: str(r?.name, 120), title: str(r?.title, 120), company: str(r?.company, 120),
+        email: str(r?.email, 160), phone: str(r?.phone, 40) };
+      return x.name ? x : null;
+    }),
+    custom: arr(d.custom, 25, (q) => {
+      const x = { question: str(q?.question, 300), answer: str(q?.answer, 1500) };
+      return x.question ? x : null;
+    }),
     summary: str(d.summary, 1500),
   };
 }

@@ -552,30 +552,32 @@ function setProfileMsg(t) { $("#profile-msg").textContent = t; }
 function updateProfileCount() { $("#profile-count").textContent = $("#profile-text").value.length.toLocaleString(); }
 
 // ---------- full profile: contact, links, work authorization, experience, education, skills, summary
-const EXP_KEYS = ["company", "title", "start", "end", "current", "summary"];
-const EDU_KEYS = ["school", "degree", "field", "year"];
+const ROW_FIELDS = {
+  exp: [["company", "Company"], ["title", "Title"], ["start", "Start", "2021-03"], ["end", "End", "2024-06"],
+        ["current", "I work here now", "", "check"], ["summary", "What you did", "", "area"]],
+  edu: [["school", "School"], ["degree", "Degree"], ["field", "Field of study"], ["gpa", "GPA (optional)"], ["year", "Graduation year"]],
+  ref: [["name", "Name"], ["title", "Title"], ["company", "Company"], ["email", "Email"], ["phone", "Phone"]],
+  qa: [["question", "Question", "", "area"], ["answer", "Your answer", "", "area"]],
+};
+const ROW_LISTS = { exp: "pf-exp", edu: "pf-edu", ref: "pf-ref", qa: "pf-qa" };
+const ROW_DATA = { exp: "experience", edu: "education", ref: "references", qa: "custom" };
+const TEXT_LISTS = ["skills", "certifications", "languages"];
 
 function profileRow(kind, item = {}) {
   const row = document.createElement("div");
   row.className = "pf-row";
-  const v = (k) => esc(item[k] || "");
-  const body = kind === "exp"
-    ? `<label class="pf-field"><span>Company</span><input data-k="company" value="${v("company")}"></label>
-       <label class="pf-field"><span>Title</span><input data-k="title" value="${v("title")}"></label>
-       <label class="pf-field"><span>Start</span><input data-k="start" placeholder="2021-03" value="${v("start")}"></label>
-       <label class="pf-field"><span>End</span><input data-k="end" placeholder="2024-06" value="${v("end")}"></label>
-       <label class="pf-check wide"><input type="checkbox" data-k="current" ${item.current ? "checked" : ""}> I work here now</label>
-       <label class="pf-field wide"><span>What you did</span><textarea data-k="summary" rows="2">${v("summary")}</textarea></label>`
-    : `<label class="pf-field"><span>School</span><input data-k="school" value="${v("school")}"></label>
-       <label class="pf-field"><span>Degree</span><input data-k="degree" value="${v("degree")}"></label>
-       <label class="pf-field"><span>Field of study</span><input data-k="field" value="${v("field")}"></label>
-       <label class="pf-field"><span>Year</span><input data-k="year" value="${v("year")}"></label>`;
-  row.innerHTML = `<div class="pf-grid">${body}</div><button type="button" class="link pf-remove">Remove</button>`;
+  const fields = ROW_FIELDS[kind].map(([k, label, ph = "", type = ""]) => {
+    if (type === "check") return `<label class="pf-check wide"><input type="checkbox" data-k="${k}" ${item[k] ? "checked" : ""}> ${label}</label>`;
+    if (type === "area") return `<label class="pf-field wide"><span>${label}</span><textarea data-k="${k}" rows="2">${esc(item[k] || "")}</textarea></label>`;
+    return `<label class="pf-field"><span>${label}</span><input data-k="${k}" placeholder="${esc(ph)}" value="${esc(item[k] || "")}"></label>`;
+  });
+  row.innerHTML = `<div class="pf-grid">${fields.join("")}</div><button type="button" class="link pf-remove">Remove</button>`;
   row.querySelector(".pf-remove").addEventListener("click", () => row.remove());
   return row;
 }
 
-function readRows(container, keys) {
+function readRows(container, kind) {
+  const keys = ROW_FIELDS[kind].map((f) => f[0]);
   return [...container.querySelectorAll(".pf-row")].map((row) => {
     const o = {};
     for (const k of keys) {
@@ -588,27 +590,28 @@ function readRows(container, keys) {
 
 function fillProfileForm(d) {
   for (const el of $("#profile-form").querySelectorAll("[name]")) {
-    const parts = el.name.split(".");
+    if (TEXT_LISTS.includes(el.name)) { el.value = (d[el.name] || []).join(", "); continue; }
     let v = d;
-    for (const p of parts) v = v?.[p];
-    if (el.name === "skills") v = (d.skills || []).join(", ");
+    for (const p of el.name.split(".")) v = v?.[p];
     el.value = v ?? "";
   }
-  $("#pf-exp").replaceChildren(...(d.experience || []).map((e) => profileRow("exp", e)));
-  $("#pf-edu").replaceChildren(...(d.education || []).map((e) => profileRow("edu", e)));
+  for (const kind of Object.keys(ROW_LISTS)) {
+    $(`#${ROW_LISTS[kind]}`).replaceChildren(...(d[ROW_DATA[kind]] || []).map((item) => profileRow(kind, item)));
+  }
 }
 
 function readProfileForm() {
   const out = {};
   for (const el of $("#profile-form").querySelectorAll("[name]")) {
+    if (TEXT_LISTS.includes(el.name)) { out[el.name] = el.value.split(","); continue; }
     const parts = el.name.split(".");
-    if (el.name === "skills") { out.skills = el.value.split(","); continue; }
     let o = out;
     for (const p of parts.slice(0, -1)) o = o[p] = o[p] || {};
     o[parts[parts.length - 1]] = el.value.trim();
   }
-  out.experience = readRows($("#pf-exp"), EXP_KEYS);
-  out.education = readRows($("#pf-edu"), EDU_KEYS);
+  for (const kind of Object.keys(ROW_LISTS)) {
+    out[ROW_DATA[kind]] = readRows($(`#${ROW_LISTS[kind]}`), kind);
+  }
   return out;
 }
 
@@ -822,7 +825,7 @@ function wire() {
   $("#pf-save").addEventListener("click", saveProfileDetails);
   document.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
     const kind = b.dataset.add;
-    (kind === "exp" ? $("#pf-exp") : $("#pf-edu")).appendChild(profileRow(kind));
+    $(`#${ROW_LISTS[kind]}`).appendChild(profileRow(kind));
   }));
   const authMsg = (t) => { $("#signin-msg").textContent = t; };
   const credentials = () => {
