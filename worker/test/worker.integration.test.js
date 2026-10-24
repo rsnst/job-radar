@@ -35,7 +35,7 @@ test("worker completes a synthetic local Workday flow and records the receipt", 
     }
     if (url.pathname === "/rest/v1/profile_details") return send([{ data: {
       contact: { fullName: "Jordan Example", email: "jordan@example.test", phone: "5550100" },
-      address: { city: "Testville" }, work: { authorizedUS: "yes", needsSponsorship: "no" }, links: {}, experience: [], education: [],
+      address: { city: "Testville" }, work: { authorizedUS: "yes", needsSponsorship: "no" }, links: {}, experience: [], education: [], autoApply: { autoSubmit: true },
     } }]);
     if (url.pathname === "/rest/v1/profiles") return send([{ text: "Jordan Example\nSample resume" }]);
     if (url.pathname === "/rest/v1/application_docs") return send([{ body: "Jordan Example\nProduct engineer with test experience.", version: 7, kind: "resume" }]);

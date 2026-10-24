@@ -1,0 +1,23 @@
+# One-click deploy of the Job Compass worker on Render (Blueprint).
+# Render > New > Blueprint > pick this repo. Needs an always-on plan (starter); a free instance sleeps and would miss runs.
+services:
+  - type: web
+    name: job-compass-worker
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        sync: false          # you type this in the Render dashboard
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false          # you type this in the Render dashboard
+      - key: INBOX_DOMAIN
+        sync: false          # domain whose mail forwards to https://<service>.onrender.com/inbound
+      - key: CREDENTIAL_KEY
+        generateValue: true  # 256-bit base64, created once by Render. Don't rotate: saved employer passwords need it.
+      - key: INBOUND_SECRET
+        generateValue: true  # read it in the Render dashboard when you set up the mail forwarding
+      - key: INBOUND_PORT
+        value: "10000"
