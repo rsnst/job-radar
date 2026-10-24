@@ -43,6 +43,7 @@ jobs:
         with: { node-version: "22" }
       - run: pip install -r requirements.txt pytest
       - run: python -m pytest -q tests --ignore=tests/e2e.py
+      - run: npm ci
       - run: node --test tests/*.test.mjs
 
   plan:
