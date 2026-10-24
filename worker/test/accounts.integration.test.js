@@ -123,7 +123,7 @@ async function harness(t, { autoApply = { createAccounts: true }, seed, sendMail
     const m = url.pathname.match(/^\/rest\/v1\/(\w+)$/);
     if (!m) return send({ error: "no route" }, 404);
     const t = m[1];
-    if (t === "profile_details") return send([{ data: { contact: { fullName: "Jordan Example", email: "jordan@example.test", phone: "5550100" }, address: {}, work: {}, links: {}, autoApply } }]);
+    if (t === "profile_details") return send([{ data: { contact: { fullName: "Jordan Example", email: "jordan@example.test", phone: "5550100" }, address: {}, work: {}, links: {}, autoApply: { autoSubmit: true, ...autoApply } } }]);
     if (t === "profiles") return send([{ text: "Jordan Example\nSample resume" }]);
     if (t === "application_docs") return send([{ body: "Jordan Example\nProduct engineer.", version: 3, kind: "resume" }]);
     if (t === "applications") { if (req.method === "POST") { state.tracker = await body(req); res.writeHead(204); return res.end(); } return send([]); }

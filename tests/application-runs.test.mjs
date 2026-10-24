@@ -13,6 +13,9 @@ test("application decisions accept numeric database IDs and reject malformed IDs
   const requests = [];
   t.mock.method(globalThis, "fetch", async (url, opts) => {
     if (url.endsWith("/auth/v1/user")) return Response.json({ id: "test-user" });
+    if (!opts?.method || opts.method === "GET") {
+      if (String(url).includes("select=status,user_decision,result")) return Response.json([{ status: "awaiting_review", user_decision: "pending", result: { review_fields: [{ label: "First name" }], review_overflow: false } }]);
+    }
     requests.push({ url, opts });
     return Response.json([{ id: 123, user_decision: "approve" }]);
   });
